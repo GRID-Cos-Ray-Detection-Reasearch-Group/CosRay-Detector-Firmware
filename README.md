@@ -44,7 +44,22 @@ CosRay FreeRTOS 是一个基于 ESP32S3 微控制器的宇宙射线检测项目�
 
 4. 配置 ESP-IDF 环境
 
+### vscode 环境推荐配置
+
+1. [clangd](https://marketplace.visualstudio.com/items?itemName=llvm-vs-code-extensions.vscode-clangd) 扩展：用于 C/C++ 代码格式化和静态检查。
+2. [Prettier - Code formatter](https://marketplace.visualstudio.com/items?itemName=esbenp.prettier-vscode) 扩展：用于格式化 Markdown、JSON、YAML 等文件。
+3. [Black Formatter](https://marketplace.visualstudio.com/items?itemName=ms-python.black-formatter) 扩展：用于格式化 Python 文件。
+4. [SonarQube for IDE](https://marketplace.visualstudio.com/items?itemName=SonarSource.sonarlint-vscode) 扩展：用于代码质量和安全性检查。
+
 ### 构建项目
+
+#### vscode ESP-IDF 扩展
+
+1. 打开 VSCode，确保 ESP-IDF 扩展已安装并配置正确。
+2. 使用扩展提供的命令打开项目文件夹。
+3. 使用扩展内的构建和烧录命令进行操作。
+
+#### cmdline
 
 1. 配置 sdkconfig：
 
@@ -105,8 +120,6 @@ CosRay FreeRTOS 是一个基于 ESP32S3 微控制器的宇宙射线检测项目�
 
 - [ESP-IDF 官方文档](https://docs.espressif.com/projects/esp-idf/)
 - [FreeRTOS 官方文档](https://www.freertos.org/)
-- [宇宙射线检测相关研究](https://www.researchgate.net/publication/394806196_Ultra_high_energy_cosmic_ray_detection)
-- [开源宇宙射线检测器 Cosmic Pi](https://cosmicpi.org/)
 
 ## 贡献
 
