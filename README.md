@@ -1,60 +1,113 @@
-Cosmic Ray detection with ESP32S3， running freertos， ver.0.1
+# CosRay FreeRTOS
 
-MPL2.0许可协议，修改不可闭源，但新增代码协议不必延续MPL协议
+## 项目简介
 
-1.1. git仓库会忽略build与Archives与Binaries目录下的所有文件，因此每次从远程仓库同步后需要重新build。
+CosRay FreeRTOS 是一个基于 ESP32S3 微控制器的宇宙射线检测项目，使用 FreeRTOS 实时操作系统。该项目旨在检测宇宙射线（主要是 μ 介子），并通过 GPS、PPS 和 Muon 中断等机制收集和处理数据。项目支持数据存储、蓝牙通信和远程传输功能。
 
-1.2. 协作开发方式：每次实现新功能前，从远程仓库拉取（pull）最新版本代码到本地仓库，再新建一个分支（branch）。本地仓库多次
-commit后，编译测试实现了期望的功能，把本地仓库push到新建分支上，同时在push时提交一份说明。之后再提交一个pull request，
-申请将新分支与main分支合并，经过其他成员测试审核后通过合并请求，正式合并。
+该项目基于开源硬件和软件，允许用户构建自己的宇宙射线检测器，并连接到网络以共享数据。
 
-1.3. commit is cheap，commit 仅提交代码到本地仓库，因此为了版本管理方便起见应该多commit。但每次commit应该简单描述
-commit的改动和期望实现的目的，以便维护一个完整的change log。
+## 软件要求
 
-1.4. 提交bug issue与featrue issue请按照仓库内issue template格式。
+- ESP-IDF (Espressif IoT Development Framework)
+- FreeRTOS (通过 ESP-IDF 组件提供)
+- CMake (用于构建)
 
-git使用细节参考（https://zhuanlan.zhihu.com/p/51199833 ）
+## 构建和运行
 
-2.1. FreeRTOS直接使用ESP-IDF组件，因此没有包含在工程目录下，需要正确配置ESP-IDF。
+### 环境设置
 
-2.2. ESP-IDF自带组件的配置全部通过工程下sdkconfig完成，因此如果对sdkconfig有改动，也应当新建branch进行测试。
+1. 安装 ESP-IDF：
+   - 推荐使用 VsCode + [ESP-IDF 扩展](https://marketplace.visualstudio.com/items?itemName=espressif.esp-idf-extension)
+   - 手动安装，详细步骤请参考 [ESP-IDF 官方文档](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/get-started/index.html)。
 
-3.1. 自定义的变量名称应当使用英文或英文缩写，尽可能简短而清晰地说明这个变量的功能。具体命名规范为大驼峰命名法，
-（参考 https://blog.csdn.net/weixin_43758823/article/details/84888470 ），每个逻辑断点的单词的首字母大写，不需要
-下划线。示例：需要设置一个存储科学数据的缓存，命名为SCIBuf。
+2. 设置代码格式化环境（可选，但推荐）：
 
-3.2. main.c内定义的函数仅包含任务函数、中断服务子程。自定义子函数应当在BSP文件夹下新开.c和.h文件。
+   本项目使用 pre-commit 和 clang-format 来自动格式化 C 代码。
+   - 运行一键设置脚本（根据你的操作系统选择）：
+     - Windows PowerShell：`.\setup.ps1`
+     - Windows CMD：`setup.bat`
+     - Linux/Mac：`./setup.sh`
 
-3.3. 在bsp.h内include BSP文件夹内所有其它.h文件，这样只需要在.c文件内 include一次bsp.h，就能够使用BSP内所有自定义函数。
+     这些脚本会自动安装 uv 和 pre-commit，并设置 Git 钩子。
 
-3.4. 写.h文件时注意使用#ifndef #define #endif语句，来避免.h文件重复include。
+   - 手动设置：
+     - 安装 uv：`curl -LsSf https://astral.sh/uv/install.sh | sh`
+     - 安装 pre-commit：`uv pip install pre-commit`
+     - 安装钩子：`pre-commit install`
 
-3.5. 所有全局变量都在main.c内定义，并在bsp.h内通过extern关键字声明，以此避免重复声明。如果全局变量使用了自定义结构体，
-结构体也在bsp.h内声明。如果有.c文件需要用到全局变量，就include bsp.h。
+3. 克隆项目仓库：
 
-示例：
+   ```bash
+   git clone https://github.com/ADCirx/CosRay_FreeRTOS.git
+   cd CosRay_FreeRTOS
+   ```
 
-在bsp.h内声明SCIBuf结构体
-typedef struct SCIPkg {
-uint8_t Head[3];
-SCIDataType Event;
-SCIDataShortType EventShort[43];
-uint8_t EffCnt[4];
-uint8_t LostCnt[4];
-uint8_t Tail[3];
-uint8_t CRC[2];
-}SCIPkgType;
+4. 配置 ESP-IDF 环境
 
-在bsp.h内通过extern关键字声明SCIBuf全局变量
+### 构建项目
 
-extern SCIPkgType SCIBuf[2][8];
+1. 配置 sdkconfig：
 
-在main.c内定义SCIBuf全局变量
+   ```bash
+   idf.py menuconfig
+   ```
 
-SCIPkgType SCIBuf[2][8] = {0};
+2. 构建项目：
 
-3.6. 作者信息与代码功能在代码内通过注释体现，示例：
+   ```bash
+   idf.py build
+   ```
 
-/_
-High flux mode global var (edit by LLH 2024.11.21)
-_/
+3. 烧录到 ESP32S3：
+
+   ```bash
+   idf.py flash
+   ```
+
+4. 监控输出：
+
+   ```bash
+   idf.py monitor
+   ```
+
+### 注意事项
+
+- git 仓库会忽略 `build`、`Archives` 和 `Binaries` 目录下的所有文件，因此每次从远程仓库同步后需要重新构建。
+- ESP-IDF 自带组件的配置全部通过工程下 `sdkconfig` 完成，如果对 `sdkconfig` 有改动，也应当新建分支进行测试。
+
+## 开发规范
+
+### 协作开发
+
+1. **分支管理**：每次实现新功能前，从远程仓库拉取最新版本代码到本地仓库，再新建一个分支。实现功能后，推送分支并提交 Pull Request。
+
+2. **Commit 规范**：
+   - 使用约定式提交信息
+   - 参考 [Conventional Commits](https://www.conventionalcommits.org/zh-hans/v1.0.0/) 规范。
+   - 示例：`feat: 实现 GPS 同步`，`fix: 修复 pre-commit 格式化错误`。
+
+3. **Issue 提交**：提交 bug 或 feature issue 请按照仓库内 issue template 格式。
+
+### 代码规范
+
+1. **代码格式化**：本项目使用多种格式化工具进行代码格式化。提交前会自动运行格式化检查，确保代码风格一致。
+   - C/C++ 文件：使用 clang-format，规则定义在 `.clang-format` 文件中。
+   - Python 文件：使用 Black。
+   - Markdown、JSON、YAML 等文件：使用 Prettier。
+
+2. **命名规范**：自定义变量名称使用英文或英文缩写，尽可能简短而清晰。使用大驼峰命名法（PascalCase），每个逻辑断点的单词首字母大写，无需下划线。示例：存储科学数据的缓存命名为 `SCIBuf`。
+
+## 许可证
+
+本项目采用 MPL 2.0 许可证。修改不可闭源，但新增代码协议不必延续 MPL 协议。
+
+## 参考资料
+
+- [ESP-IDF 官方文档](https://docs.espressif.com/projects/esp-idf/)
+- [FreeRTOS 官方文档](https://www.freertos.org/)
+- [宇宙射线检测相关研究](https://www.researchgate.net/publication/394806196_Ultra_high_energy_cosmic_ray_detection)
+- [开源宇宙射线检测器 Cosmic Pi](https://cosmicpi.org/)
+
+## 贡献
+
+欢迎提交 Issue 和 Pull Request。请遵循上述开发规范。
