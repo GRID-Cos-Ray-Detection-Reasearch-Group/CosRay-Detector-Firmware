@@ -1,0 +1,49 @@
+name: CI
+
+on:
+    push:
+        branches: ["main"]
+    pull_request:
+
+permissions:
+    contents: read
+
+env:
+    IDF_TARGET: esp32s3
+    IDF_VERSION: v5.3.1
+
+jobs:
+    build-and-test:
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v4
+
+            - name: Install ESP-IDF toolchain
+              shell: bash
+              env:
+                  IDF_PATH: ${{ github.workspace }}/esp-idf
+              run: |
+                  git clone --depth 1 --branch ${IDF_VERSION} https://github.com/espressif/esp-idf.git "$IDF_PATH"
+                  "$IDF_PATH"/install.sh ${IDF_TARGET}
+
+            - name: Build firmware
+              shell: bash
+              env:
+                  IDF_PATH: ${{ github.workspace }}/esp-idf
+                  IDF_CCACHE_ENABLE: "1"
+              run: |
+                  . "$IDF_PATH"/export.sh
+                  python -m pip install --upgrade pip
+                  python -m pip install -r requirements.txt
+                  idf.py set-target ${IDF_TARGET}
+                  idf.py build
+
+            - name: Run tests
+              shell: bash
+              env:
+                  IDF_PATH: ${{ github.workspace }}/esp-idf
+              run: |
+                  . "$IDF_PATH"/export.sh
+                  pytest pytest_hello_world.py -q
