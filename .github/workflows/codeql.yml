@@ -62,6 +62,8 @@ jobs:
         with:
           # Ensure ESP-IDF and other submodules are initialized for the build
           submodules: recursive
+          # Fetch full history which can help some ESP-IDF installs that rely on tags
+          fetch-depth: 0
 
       # Add any setup steps before running the `github/codeql-action/init` action.
       # This includes steps like installing compilers or runtimes (`actions/setup-node`
@@ -88,14 +90,13 @@ jobs:
       # to build your code.
       # ℹ️ Command-line programs to run using the OS shell.
       # 📚 See https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#jobsjob_idstepsrun
-      - name: Prepare ESP-IDF environment (espressif action)
+      - name: Install ESP-IDF on runner
         if: matrix.build-mode == 'manual'
-        uses: espressif/esp-idf-ci-action@v1
+        uses: espressif/install-esp-idf-action@v1
         with:
-          # Install/setup ESP-IDF and toolchain similar to CI
-          esp_idf_version: v5.3.1
-          target: esp32s3
-          path: "."
+          # Install the same ESP-IDF version as CI so build is reproducible
+          version: "v5.3.1"
+          # (optional) path and tools-path can be set if needed
 
       - name: Build project with idf.py (captured for CodeQL)
         if: matrix.build-mode == 'manual'
