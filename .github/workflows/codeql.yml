@@ -59,6 +59,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          # Ensure ESP-IDF and other submodules are initialized for the build
+          submodules: recursive
 
       # Add any setup steps before running the `github/codeql-action/init` action.
       # This includes steps like installing compilers or runtimes (`actions/setup-node`
@@ -85,14 +88,20 @@ jobs:
       # to build your code.
       # ℹ️ Command-line programs to run using the OS shell.
       # 📚 See https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#jobsjob_idstepsrun
-      - name: Run manual build steps (ESP-IDF)
+      - name: Prepare ESP-IDF environment (espressif action)
         if: matrix.build-mode == 'manual'
         uses: espressif/esp-idf-ci-action@v1
         with:
-          # Match CI: use the same ESP-IDF version and target as the project's CI
+          # Install/setup ESP-IDF and toolchain similar to CI
           esp_idf_version: v5.3.1
           target: esp32s3
           path: "."
+
+      - name: Build project with idf.py (captured for CodeQL)
+        if: matrix.build-mode == 'manual'
+        run: |
+          idf.py build
+        shell: bash
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v4
