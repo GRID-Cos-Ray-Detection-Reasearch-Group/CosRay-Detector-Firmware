@@ -16,7 +16,7 @@ on:
 jobs:
   check_commit_messages:
     name: Check commits in PR
-    if: ${{ !github.event.pull_request.merged && github.base_ref != 'main' }}
+    if: ${{ !github.event.pull_request.merged }}
     runs-on: ubuntu-latest
     steps:
       - name: Clean up previous comment
