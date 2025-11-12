@@ -1,7 +1,8 @@
 name: Commit Message Check
 permissions:
   contents: read
-  pull-requests: read
+  pull-requests: write
+  issues: write
 
 on:
   pull_request_target:
@@ -58,7 +59,7 @@ jobs:
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: context.payload.pull_request.number,
-                body: `## WARNING: Found ${invalidCommits.length} invalid commit(s)\n\n${invalidCommitInfoList}\n\n---\nPlease follow the Conventional Commits format and avoid using merge commits.`
+                body: `## Found ${invalidCommits.length} invalid commit(s):\n\n${invalidCommitInfoList}\n\n---\nPlease follow the [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) format.\n请遵循 [Conventional Commits](https://www.conventionalcommits.org/zh-hans/v1.0.0/) 格式。`
               });
               core.setFailed(`Found ${invalidCommits.length} invalid commit(s):\n${invalidCommitNames.join("\n-------------------\n")}`);
             }
