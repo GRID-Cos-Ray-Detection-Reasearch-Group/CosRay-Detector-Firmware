@@ -1,0 +1,44 @@
+name: CI
+
+on:
+    push:
+        paths:
+            - .github/workflows/ci.yml
+            - CMakeLists.txt
+            - main/**
+            - BSP/**
+            - sdkconfig
+            - sdkconfig.ci
+            - requirements.txt
+            - pyproject.toml
+            - setup.sh
+            - setup.ps1
+            - setup.bat
+
+concurrency:
+    group: ${{ github.workflow }}-${{ github.ref }}
+    cancel-in-progress: true
+
+permissions:
+    contents: read
+
+jobs:
+    build:
+        name: ESP32
+        runs-on: ubuntu-latest
+        env:
+            IDF_TARGET: esp32s3
+            IDF_VERSION: v5.3.1
+
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v4
+              with:
+                  submodules: recursive
+
+            - name: Build with ESP-IDF action
+              uses: espressif/esp-idf-ci-action@v1
+              with:
+                  esp_idf_version: ${{ env.IDF_VERSION }}
+                  target: ${{ env.IDF_TARGET }}
+                  path: "."
