@@ -34,6 +34,7 @@ QueueHandle_t DataQueue;
 
 // 信号量声明
 SemaphoreHandle_t TxBufferMutex;
+SemaphoreHandle_t TxBufferReadySemaphore;
 
 static void GpsRxIntTask(void);
 
@@ -190,6 +191,12 @@ void AppSetup(void) {
 		ESP_LOGE(TAG, "Failed to create TxBuffer Mutex");
 		return;
 	}
+	TxBufferReadySemaphore = xSemaphoreCreateBinary();
+	if (TxBufferReadySemaphore == NULL) {
+		ESP_LOGE(TAG, "Failed to create TxBuffer Ready Semaphore");
+		return;
+	}
+	xSemaphoreGive(TxBufferReadySemaphore);
 
 	// 创建消息队列
 	CommandQueue = xQueueCreate(10, sizeof(Command_t));

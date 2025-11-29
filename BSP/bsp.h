@@ -14,6 +14,7 @@ extern QueueHandle_t DataQueue;
 
 // 信号量定义
 extern SemaphoreHandle_t TxBufferMutex;
+extern SemaphoreHandle_t TxBufferReadySemaphore;
 
 // BSP Interface functions
 esp_err_t BSPInit(void);

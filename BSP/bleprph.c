@@ -192,7 +192,11 @@ static int DataAccessCallback(uint16_t ConnHandle, uint16_t attr_handle,
 		// 获取信号量，检查TxBuffer是否正在被写入
 		if (xSemaphoreTake(TxBufferMutex, 0) == pdTRUE) {
 			int rc = os_mbuf_append(ctxt->om, TxBuffer, DATA_BUFFER_SIZE);
+			for (size_t i = 0; i < DATA_BUFFER_SIZE; i++) {
+				TxBuffer[i] = 0;
+			}
 			xSemaphoreGive(TxBufferMutex);
+			xSemaphoreGive(TxBufferReadySemaphore);
 			return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
 		} else {
 			// TxBuffer正在被写入，传递空包
