@@ -188,27 +188,51 @@ static int DataAccessCallback(uint16_t ConnHandle, uint16_t attr_handle,
 			ESP_LOGE(TAG, "Read from invalid handle");
 			return BLE_ATT_ERR_READ_NOT_PERMITTED;
 		}
-		// TODO 获取信号量
-		int rc = os_mbuf_append(ctxt->om, TxBufferReadPtr, DATA_BUFFER_SIZE);
-		return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+
+		// 获取信号量，检查TxBuffer是否正在被写入
+		if (xSemaphoreTake(TxBufferMutex, 0) == pdTRUE) {
+			int rc = os_mbuf_append(ctxt->om, TxBuffer, DATA_BUFFER_SIZE);
+			xSemaphoreGive(TxBufferMutex);
+			return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+		} else {
+			// TxBuffer正在被写入，传递空包
+			NullPkg_t nullPkg;
+			nullPkg.head[0] = 0xFF;
+			nullPkg.head[1] = 0x00;
+			nullPkg.head[2] = 0xFF;
+			nullPkg.tail[0] = 0x00;
+			nullPkg.tail[1] = 0xFF;
+			nullPkg.tail[2] = 0x00;
+			nullPkg.crc = CalcCRC((uint8_t *)&nullPkg, sizeof(NullPkg_t) - 2);
+			int rc = os_mbuf_append(ctxt->om, &nullPkg, sizeof(NullPkg_t));
+			return 0;
+		}
 	} else if (ctxt->op) {
 		if (attr_handle != CMDCharAttrHandle) {
 			ESP_LOGE(TAG, "Write to invalid handle");
 			return BLE_ATT_ERR_WRITE_NOT_PERMITTED;
 		}
-		int len = OS_MBUF_PKTLEN(ctxt->om);
-		if (len > CMD_BUFFER_SIZE)
-			len = CMD_BUFFER_SIZE;
-		int rc = os_mbuf_copydata(ctxt->om, 0, len, &RxBuffer);
+		// 复制数据到RxBuffer
+		size_t len = OS_MBUF_PKTLEN(ctxt->om);
+		if (len != sizeof(Command_t)) {
+			ESP_LOGE(TAG, "Invalid command length: %d", len);
+			return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
+		}
+		CommandPkg_t cmdPkg;
+		int rc = os_mbuf_copydata(ctxt->om, 0, len, (uint8_t*) &cmdPkg);
 		if (rc) {
+			return BLE_ATT_ERR_UNLIKELY;
+		}
+		// 校验CRC
+		uint16_t calcCrc = CalcCRC((uint8_t *)&cmdPkg.cmd, sizeof(Command_t) - 2);
+		if (calcCrc != cmdPkg.crc) {
+			ESP_LOGE(TAG, "Invalid command CRC: received 0x%04X, calculated 0x%04X",
+					 cmdPkg.crc, calcCrc);
 			return BLE_ATT_ERR_UNLIKELY;
 		}
 
 		// 将命令放入队列
-		CommandMessage_t msg;
-		msg.len = len;
-		os_mbuf_copydata(ctxt->om, 0, len, msg.data);
-		if (xQueueSend(CommandQueue, &msg, 0) != pdTRUE) {
+		if (xQueueSend(CommandQueue, &cmdPkg.cmd, 0) != pdTRUE) {
 			ESP_LOGE(TAG, "Failed to enqueue command message");
 			return BLE_ATT_ERR_UNLIKELY;
 		}

@@ -20,8 +20,8 @@ typedef struct {
 	MuonData_t MuonData[35]; // μ子事件，每个数据包最多能填充35个有效值
 	// 根据μ子计数率估算大约20s写满一个包
 	uint8_t tail[3]; // 0xDD, 0xEE, 0xFF for MuonPackage
-	uint16_t crc;
 	uint8_t reserved[6];
+	uint16_t crc;
 } MuonDataPkg_t; // 平均每秒产生大约25.6B数据
 #pragma pack(pop)
 
@@ -53,16 +53,36 @@ typedef struct {
 	TimeLineData_t
 		TimeLineData[10]; // 每5秒生成一次有效timeline数据，每个包最多填充10个
 	uint8_t tail[3];	  // 0x78 0x9A 0xBC for timeline package
+	uint8_t reserved[20];
 	uint16_t crc;
-	uint8_t reserve[20];
-} TImeLinePkg_t; // 平均每秒产生10.24B数据
+} TimeLinePkg_t; // 平均每秒产生10.24B数据
+#pragma pack(pop)
+
+#pragma pack(push, 1)
+typedef struct {
+	uint8_t head[3]; // 0xFF, 0x00, 0xFF for Null Package
+	uint8_t tail[3]; // 0x00, 0xFF, 0x00 for Null Package
+	uint16_t crc;
+} NullPkg_t;	   // 用于BLE传输时的占位空包，不用于存储
 #pragma pack(pop)
 
 typedef struct {
-	uint8_t data[CMD_BUFFER_SIZE];
-	uint16_t len;
-} CommandMessage_t;
+	uint8_t data[CMD_LENGTH];
+} Command_t;
+/*
+data[0]: 命令类型
+data[0]==0x01: 发送数据包
+	data[1]: 数据包类型
+		0x01: 谬子数据包
+		0x02: 时间线数据包
+	data[2]-data[5]: 数据包计数（uint32_t，大端序）
+	data[6]-data[7]: 预留
+其余预留
+*/
 
-typedef uint8_t DataMessage_t; // TODO 检查消息类型
+typedef struct {
+	Command_t cmd;
+	uint16_t crc;
+} CommandPkg_t;
 
 #endif // TYPEDEFS_H

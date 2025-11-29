@@ -35,7 +35,7 @@ extern TaskHandle_t telTaskHandle;
 extern TaskHandle_t commandHandlerTaskHandle;
 
 // 缓冲区大小定义
-#define CMD_BUFFER_SIZE 8
+#define CMD_LENGTH 8
 #define DATA_BUFFER_SIZE 512
 
 #endif // CONFIG_H

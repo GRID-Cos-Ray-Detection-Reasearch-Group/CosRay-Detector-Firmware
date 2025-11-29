@@ -25,10 +25,7 @@ TaskHandle_t dataStoreTaskHandle;
 TaskHandle_t telTaskHandle;
 
 //********************GLOBAL VARS*************************//
-volatile uint8_t RxBuffer[CMD_BUFFER_SIZE];
-volatile uint8_t TxBuffer[DATA_BUFFER_SIZE * 2];
-volatile uint8_t *TxBufferReadPtr;
-volatile uint8_t *TxBufferWritePtr;
+volatile uint8_t TxBuffer[DATA_BUFFER_SIZE];
 volatile uint8_t gpsBuffer[256];
 
 // 消息队列声明
@@ -147,6 +144,20 @@ static void AppDataStore(void *pvParameters) {
 
 static void CommandHandlerTask(void *pvParameters) {
 	ESP_LOGI(TAG, "Command Handler Task Started");
+	while (1) {
+		Command_t cmdMsg;
+		if (xQueueReceive(CommandQueue, &cmdMsg, portMAX_DELAY) == pdTRUE) {
+			// 处理命令
+			ESP_LOGI(TAG, "Received command of length %d", cmdMsg.len);
+			switch (cmdMsg.data[0]) {
+			case 0x01: // 发送数据包
+				xQueueSend(DataQueue, &cmdMsg, portMAX_DELAY);
+				break;
+			default:
+				break;
+			}
+		}
+	}
 	ESP_LOGI(TAG, "Command Handler Task Ended");
 }
 
@@ -173,9 +184,22 @@ void InterruptSetup(void) {
 }
 
 void AppSetup(void) {
-	CommandQueue = xQueueCreate(10, sizeof(CommandMessage_t));
+	// 创建信号量
+	TxBufferMutex = xSemaphoreCreateMutex();
+	if (TxBufferMutex == NULL) {
+		ESP_LOGE(TAG, "Failed to create TxBuffer Mutex");
+		return;
+	}
+
+	// 创建消息队列
+	CommandQueue = xQueueCreate(10, sizeof(Command_t));
 	if (CommandQueue == NULL) {
 		ESP_LOGE(TAG, "Failed to create Command Queue");
+		return;
+	}
+	DataQueue = xQueueCreate(10, sizeof(Command_t));
+	if (DataQueue == NULL) {
+		ESP_LOGE(TAG, "Failed to create Data Queue");
 		return;
 	}
 

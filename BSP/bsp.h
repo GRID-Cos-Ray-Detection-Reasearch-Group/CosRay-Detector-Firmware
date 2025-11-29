@@ -5,10 +5,7 @@
 #include "typedefs.h"
 
 // 缓冲区定义
-extern volatile uint8_t RxBuffer[CMD_BUFFER_SIZE];
-extern volatile uint8_t TxBuffer[DATA_BUFFER_SIZE * 2];
-extern volatile uint8_t *TxBufferReadPtr;
-extern volatile uint8_t *TxBufferWritePtr;
+extern volatile uint8_t TxBuffer[DATA_BUFFER_SIZE];
 extern volatile uint8_t gpsBuffer[256];
 
 // 队列定义
@@ -26,5 +23,7 @@ void RunBlueToothHost(void);
 
 esp_err_t InitDataPeripheral(void);
 void RunDataPeripheral(void);
+
+uint16_t CalcCRC(const uint8_t *data, size_t length);
 
 #endif // BSP_H
