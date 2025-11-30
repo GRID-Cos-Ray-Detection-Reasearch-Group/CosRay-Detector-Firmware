@@ -25,8 +25,8 @@ TaskHandle_t dataStoreTaskHandle;
 TaskHandle_t telTaskHandle;
 
 //********************GLOBAL VARS*************************//
-volatile uint8_t TxBuffer[DATA_BUFFER_SIZE];
-volatile uint8_t gpsBuffer[256];
+uint8_t TxBuffer[DATA_BUFFER_SIZE];
+uint8_t gpsBuffer[256];
 
 // 消息队列声明
 QueueHandle_t CommandQueue;

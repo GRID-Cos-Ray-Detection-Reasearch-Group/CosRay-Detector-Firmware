@@ -20,7 +20,7 @@ static bool BLEConnected = false;
 static int GAPEventCallback(struct ble_gap_event *Event, void *Arg);
 
 // 特征访问回调
-static int DataAccessCallback(uint16_t ConnHandle, uint16_t attr_handle,
+static int GenericCharacteristicAccessCallback(uint16_t ConnHandle, uint16_t attr_handle,
 							  struct ble_gatt_access_ctxt *ctxt, void *arg);
 
 // 自定义服务UUID
@@ -44,19 +44,17 @@ static const ble_uuid128_t CMDCharUUID = {
 // 特征句柄
 static uint16_t DataCharValHandle;
 static uint16_t CMDCharValHandle;
-static uint16_t DataCharAttrHandle;
-static uint16_t CMDCharAttrHandle;
 
 // GATT特征定义
 static const struct ble_gatt_chr_def DataCharDef = {
 	.uuid = &DataCharUUID.u,
-	.access_cb = DataAccessCallback,
+	.access_cb = GenericCharacteristicAccessCallback,
 	.flags = BLE_GATT_CHR_F_READ,
 	.val_handle = &DataCharValHandle,
 };
 static const struct ble_gatt_chr_def CMDCharDef = {
 	.uuid = &CMDCharUUID.u,
-	.access_cb = DataAccessCallback,
+	.access_cb = GenericCharacteristicAccessCallback,
 	.flags = BLE_GATT_CHR_F_WRITE,
 	.val_handle = &CMDCharValHandle,
 };
@@ -110,10 +108,6 @@ static int InitGATTServer(void) {
 	rc = ble_gatts_count_cfg(GATTServerServices);
 	if (rc) return rc;
 	rc = ble_gatts_add_svcs(GATTServerServices);
-	if (rc) return rc;
-	rc = ble_gatts_find_chr(&MuonServiceUUID.u, &DataCharUUID.u, NULL, &DataCharAttrHandle);
-	if (rc) return rc;
-	rc = ble_gatts_find_chr(&MuonServiceUUID.u, &CMDCharUUID.u, NULL, &CMDCharAttrHandle);
 	if (rc) return rc;
 	return 0;
 }
@@ -180,45 +174,39 @@ static int GAPEventCallback(struct ble_gap_event *Event, void *Arg) {
 	return 0;
 }
 
-// Data 特征 read 访问回调
-static int DataAccessCallback(uint16_t ConnHandle, uint16_t attr_handle,
+// 特征访问回调
+static int GenericCharacteristicAccessCallback(uint16_t ConnHandle, uint16_t attr_handle,
 							  struct ble_gatt_access_ctxt *ctxt, void *arg) {
 	if (ctxt->op == BLE_GATT_ACCESS_OP_READ_CHR) {
-		if (attr_handle != DataCharAttrHandle) {
-			ESP_LOGE(TAG, "Read from invalid handle");
-			return BLE_ATT_ERR_READ_NOT_PERMITTED;
-		}
-
 		// 获取信号量，检查TxBuffer是否正在被写入
 		if (xSemaphoreTake(TxBufferMutex, 0) == pdTRUE) {
-			int rc = os_mbuf_append(ctxt->om, TxBuffer, DATA_BUFFER_SIZE);
-			for (size_t i = 0; i < DATA_BUFFER_SIZE; i++) {
-				TxBuffer[i] = 0;
+			if (xSemaphoreTake(TxBufferReadySemaphore, 0) == pdTRUE) {
+				// TxBuffer没有有效数据，传递空包
+				xSemaphoreGive(TxBufferReadySemaphore);
+				xSemaphoreGive(TxBufferMutex);
 			}
-			xSemaphoreGive(TxBufferMutex);
-			xSemaphoreGive(TxBufferReadySemaphore);
-			return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+			else {
+				// 否则正常发送数据
+				int rc = os_mbuf_append(ctxt->om, TxBuffer, DATA_BUFFER_SIZE);
+				for (size_t i = 0; i < DATA_BUFFER_SIZE; i++) {
+					ESP_LOGI(TAG, "TxBuffer[%u] = 0x%02X", (unsigned) i, TxBuffer[i]);
+					TxBuffer[i] = 0;
+				}
+				xSemaphoreGive(TxBufferMutex);
+				xSemaphoreGive(TxBufferReadySemaphore);
+				return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
+			}
 		} else {
 			// TxBuffer正在被写入，传递空包
-			NullPkg_t nullPkg;
-			nullPkg.head[0] = 0xFF;
-			nullPkg.head[1] = 0x00;
-			nullPkg.head[2] = 0xFF;
-			nullPkg.tail[0] = 0x00;
-			nullPkg.tail[1] = 0xFF;
-			nullPkg.tail[2] = 0x00;
-			nullPkg.crc = CalcCRC((uint8_t *)&nullPkg, sizeof(NullPkg_t) - 2);
-			int rc = os_mbuf_append(ctxt->om, &nullPkg, sizeof(NullPkg_t));
-			return 0;
 		}
+
+		NullPkg_t nullPkg = CreateNullPkg();
+		int rc = os_mbuf_append(ctxt->om, (uint8_t *) &nullPkg, sizeof(NullPkg_t));
+		return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
 	} else if (ctxt->op) {
-		if (attr_handle != CMDCharAttrHandle) {
-			ESP_LOGE(TAG, "Write to invalid handle");
-			return BLE_ATT_ERR_WRITE_NOT_PERMITTED;
-		}
 		// 复制数据到RxBuffer
 		size_t len = OS_MBUF_PKTLEN(ctxt->om);
-		if (len != sizeof(Command_t)) {
+		if (len != sizeof(CommandPkg_t)) {
 			ESP_LOGE(TAG, "Invalid command length: %d", len);
 			return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
 		}

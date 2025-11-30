@@ -2,6 +2,9 @@
 #define TYPEDEFS_H
 
 #include <stdio.h>
+#include "config.h"
+
+uint16_t CalcCRC(const uint8_t *data, size_t length);
 
 // 谬子数据包
 #pragma pack(push, 1)
@@ -66,6 +69,8 @@ typedef struct {
 } NullPkg_t;	   // 用于BLE传输时的占位空包，不用于存储
 #pragma pack(pop)
 
+NullPkg_t CreateNullPkg();
+
 typedef struct {
 	uint8_t data[CMD_LENGTH];
 } Command_t;
@@ -80,9 +85,18 @@ data[0]==0x01: 发送数据包
 其余预留
 */
 
+#pragma pack(push, 1)
 typedef struct {
 	Command_t cmd;
 	uint16_t crc;
 } CommandPkg_t;
+#pragma pack(pop)
+
+/*
+example command pkg for sending muon data package with PkgCnt=114514:
+data: [0x01, 0x01, 0x00, 0x01, 0xBF, 0x52, 0x00, 0x00]
+crc: 0xA255
+0x 01 01 00 01 BF 52 00 00 55 A2
+*/
 
 #endif // TYPEDEFS_H
