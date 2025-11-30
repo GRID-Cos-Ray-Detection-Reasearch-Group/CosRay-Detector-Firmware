@@ -228,12 +228,20 @@ int SendNotify(uint8_t *buf, size_t len) {
         ESP_LOGE(TAG, "Invalid length for notify: %u", (unsigned)len);
         return 1;
     }
+	// ESP_LOG_BUFFER_HEXDUMP(TAG, buf, len, ESP_LOG_INFO);
 
     struct os_mbuf *om = ble_hs_mbuf_from_flat((const void *)buf, len);
     if (om == NULL) {
         ESP_LOGE(TAG, "ble_hs_mbuf_from_flat failed - no mbuf");
         return 1;
     }
+
+	// int total = OS_MBUF_PKTLEN(om); // total length across chain
+    // ESP_LOGI(TAG, "Created mbuf chain total len=%d (requested %d)", total, (int)len);
+	// int *txbuf = malloc(total);
+	// os_mbuf_copydata(om, 0, total, (uint8_t*)txbuf);
+	// ESP_LOG_BUFFER_HEXDUMP(TAG, txbuf, total, ESP_LOG_INFO);
+	// free(txbuf);
 
     int rc = ble_gatts_notify_custom(ConnHandle, DataCharValHandle, om);
     if (rc != 0) {
