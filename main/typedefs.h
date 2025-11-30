@@ -61,28 +61,41 @@ typedef struct {
 } TimeLinePkg_t; // 平均每秒产生10.24B数据
 #pragma pack(pop)
 
-#pragma pack(push, 1)
-typedef struct {
-	uint8_t head[3]; // 0xFF, 0x00, 0xFF for Null Package
-	uint8_t tail[3]; // 0x00, 0xFF, 0x00 for Null Package
-	uint16_t crc;
-} NullPkg_t;	   // 用于BLE传输时的占位空包，不用于存储
-#pragma pack(pop)
-
-NullPkg_t CreateNullPkg();
-
 typedef struct {
 	uint8_t data[CMD_LENGTH];
 } Command_t;
+
+typedef enum {
+	START = 0x01,
+	STOP = 0x02,
+	ACK = 0x03,
+	NACK = 0x04,
+	STATUS = 0x05,
+	PING = 0x06
+} CommandOpcode_t;
+
 /*
-data[0]: 命令类型
-data[0]==0x01: 发送数据包
-	data[1]: 数据包类型
-		0x01: 谬子数据包
-		0x02: 时间线数据包
-	data[2]-data[5]: 数据包计数（uint32_t，大端序）
-	data[6]-data[7]: 预留
-其余预留
+data[0] : opcode
+
+命令列表
+- 0x01 : START 开始传输
+	[1..4] : 数据包的 ID，大端存储
+	[5] : 传输的数据类型
+		0x01 : μ子数据包
+		0x02 : 时间线数据包
+- 0x02 : STOP 停止传输
+- 0x03 : ACK 确认收到数据包
+	[1..4] : 已成功收到的数据包的 ID，大端存储
+	[5] : 数据类型
+		0x01 : μ子数据包
+		0x02 : 时间线数据包
+- 0x04 : NACK 请求重传数据包
+	[1..4] : 需要重传的数据包的 ID，大端存储
+	[5] : 数据类型
+		0x01 : μ子数据包
+		0x02 : 时间线数据包
+- 0x05 : STATUS 请求状态信息
+- 0x06 : PING 测试连接
 */
 
 #pragma pack(push, 1)
@@ -93,10 +106,16 @@ typedef struct {
 #pragma pack(pop)
 
 /*
-example command pkg for sending muon data package with PkgCnt=114514:
-data: [0x01, 0x01, 0x00, 0x01, 0xBF, 0x52, 0x00, 0x00]
-crc: 0xA255
-0x 01 01 00 01 BF 52 00 00 55 A2
+例：114514 号 muon Pkg
+crc: 9736
+0x 01 00 01 BF 52 01 00 00 36 97
 */
+
+#pragma pack(push, 1)
+typedef struct {
+	uint8_t data[DATA_PACKAGE_SIZE];
+	size_t length;
+} TxPkg_t;
+#pragma pack(pop)
 
 #endif // TYPEDEFS_H

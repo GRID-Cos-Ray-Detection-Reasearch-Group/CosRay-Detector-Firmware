@@ -15,15 +15,3 @@ uint16_t CalcCRC(const uint8_t *data, size_t length) {
 	}
 	return crc;
 }
-
-NullPkg_t CreateNullPkg() {
-	NullPkg_t nullPkg;
-	nullPkg.head[0] = 0xFF;
-	nullPkg.head[1] = 0x00;
-	nullPkg.head[2] = 0xFF;
-	nullPkg.tail[0] = 0x00;
-	nullPkg.tail[1] = 0xFF;
-	nullPkg.tail[2] = 0x00;
-	nullPkg.crc = 0x12F3; // 空包计算出的CRC值
-	return nullPkg;
-}

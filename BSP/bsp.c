@@ -12,9 +12,6 @@ static const char *TAG = "BSPModule";
 
 
 esp_err_t BSPInit(void) {
-	for (size_t i = 0; i < DATA_BUFFER_SIZE; i++) {
-		TxBuffer[i] = 0;
-	}
 	ESP_LOGI(TAG, "Initializing BlueTooth Peripheral");
 	esp_err_t ESPRet = InitBlueTooth();
 	if (ESPRet != ESP_OK) {

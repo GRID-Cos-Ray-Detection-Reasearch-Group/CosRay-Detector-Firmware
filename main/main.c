@@ -20,21 +20,20 @@ static const char *TAG = "MainModule";
 // 任务句柄声明
 TaskHandle_t dataProcessTaskHandle;
 TaskHandle_t bluetoothTaskHandle;
+TaskHandle_t bluetoothTxTaskHandle;
 TaskHandle_t commandHandlerTaskHandle;
 TaskHandle_t dataStoreTaskHandle;
 TaskHandle_t telTaskHandle;
 
 //********************GLOBAL VARS*************************//
-uint8_t TxBuffer[DATA_BUFFER_SIZE];
 uint8_t gpsBuffer[256];
 
 // 消息队列声明
 QueueHandle_t CommandQueue;
 QueueHandle_t DataQueue;
+QueueHandle_t TxQueue;
 
 // 信号量声明
-SemaphoreHandle_t TxBufferMutex;
-SemaphoreHandle_t TxBufferReadySemaphore;
 
 static void GpsRxIntTask(void);
 
@@ -72,8 +71,18 @@ static void AppDataStore(void *pvParameters);
  * \brief
  *
  */
+static void BlueToothTxTask(void *pvParameters);
+
+/*!
+ * \brief
+ *
+ */
 static void AppBlueTooth(void *pvParameters);
 
+/*!
+ * \brief
+ *
+ */
 static void CommandHandlerTask(void *pvParameters);
 
 /*!
@@ -149,17 +158,42 @@ static void CommandHandlerTask(void *pvParameters) {
 		Command_t cmdMsg;
 		if (xQueueReceive(CommandQueue, &cmdMsg, portMAX_DELAY) == pdTRUE) {
 			// 处理命令
-			switch (cmdMsg.data[0]) {
-			case 0x01: // 发送数据包
-				xQueueSend(DataQueue, &cmdMsg, portMAX_DELAY);
-				// TODO: 确认此处阻塞无需修改
-				break;
-			default:
-				break;
+			uint8_t opcode = cmdMsg.data[0];
+			if (opcode == START || opcode == STOP ||
+				opcode == ACK || opcode == NACK) {
+				ESP_LOGI(TAG, "Processing command: 0x%02X", opcode);
+				// 将命令转发到数据管理任务
+				if (xQueueSend(DataQueue, &cmdMsg, pdMS_TO_TICKS(100)) != pdTRUE) {
+					ESP_LOGE(TAG, "Failed to forward command to Data Queue");
+				}
+			} else if (opcode == PING) {
+				// TODO
+			}
+			else if (opcode == STATUS) {
+				// TODO
+			}
+			else {
+				ESP_LOGW(TAG, "Unknown command opcode: 0x%02X", opcode);
 			}
 		}
 	}
 	ESP_LOGI(TAG, "Command Handler Task Ended");
+}
+
+// BLE 发送任务
+static void BlueToothTxTask(void *pvParameters) {
+	while (1) {
+		TxPkg_t TxPkg;
+		if (xQueueReceive(TxQueue, &TxPkg, portMAX_DELAY) == pdTRUE) {
+			// 发送数据
+			size_t dataLen = TxPkg.length;
+			ESP_LOGI(TAG, "Sending data notification of length %u", (unsigned) dataLen);
+			int rc = SendNotify(TxPkg.data, dataLen);
+			if (rc != 0) {
+				ESP_LOGE(TAG, "Failed to send data notification");
+			}
+		}
+	}
 }
 
 // BLE 模块任务
@@ -186,27 +220,21 @@ void InterruptSetup(void) {
 
 void AppSetup(void) {
 	// 创建信号量
-	TxBufferMutex = xSemaphoreCreateMutex();
-	if (TxBufferMutex == NULL) {
-		ESP_LOGE(TAG, "Failed to create TxBuffer Mutex");
-		return;
-	}
-	TxBufferReadySemaphore = xSemaphoreCreateBinary();
-	if (TxBufferReadySemaphore == NULL) {
-		ESP_LOGE(TAG, "Failed to create TxBuffer Ready Semaphore");
-		return;
-	}
-	xSemaphoreGive(TxBufferReadySemaphore);
 
 	// 创建消息队列
-	CommandQueue = xQueueCreate(10, sizeof(Command_t));
+	CommandQueue = xQueueCreate(COMMAND_QUEUE_SIZE, sizeof(Command_t));
 	if (CommandQueue == NULL) {
 		ESP_LOGE(TAG, "Failed to create Command Queue");
 		return;
 	}
-	DataQueue = xQueueCreate(10, sizeof(Command_t));
+	DataQueue = xQueueCreate(DATA_QUEUE_SIZE, sizeof(Command_t));
 	if (DataQueue == NULL) {
 		ESP_LOGE(TAG, "Failed to create Data Queue");
+		return;
+	}
+	TxQueue = xQueueCreate(TX_QUEUE_SIZE, sizeof (TxPkg_t));
+	if (TxQueue == NULL) {
+		ESP_LOGE(TAG, "Failed to create Tx Queue");
 		return;
 	}
 
@@ -241,15 +269,26 @@ void AppSetup(void) {
 	ESP_LOGI(TAG, "BlueTooth Task created successfully");
 
 	// 创建命令处理任务
-	ESP_LOGI(TAG, "Creating Command Handler Task");
+	ESP_LOGI(TAG, "Creating CommandHandlerTask");
 	RTOSRet = xTaskCreate(
-		CommandHandlerTask, "CmdHandlerTask", COMMAND_HANDLER_TASK_STACK_SIZE,
+		CommandHandlerTask, "CommandHandlerTask", COMMAND_HANDLER_TASK_STACK_SIZE,
 		NULL, COMMAND_HANDLER_TASK_PRIORITY, &commandHandlerTaskHandle);
 	if (RTOSRet != pdPASS) {
-		ESP_LOGE(TAG, "Failed to create Command Handler Task");
+		ESP_LOGE(TAG, "Failed to create CommandHandlerTask");
 		return;
 	}
-	ESP_LOGI(TAG, "Command Handler Task created successfully");
+	ESP_LOGI(TAG, "CommandHandlerTask created successfully");
+
+	// 创建蓝牙发送任务
+	ESP_LOGI(TAG, "Creating BlueToothTxTask");
+	RTOSRet =
+		xTaskCreate(BlueToothTxTask, "BlueToothTxTask", BLUETOOTH_TX_TASK_STACK_SIZE,
+					NULL, BLUETOOTH_TX_TASK_PRIORITY, &bluetoothTxTaskHandle);
+	if (RTOSRet != pdPASS) {
+		ESP_LOGE(TAG, "Failed to create BlueToothTxTask");
+		return;
+	}
+	ESP_LOGI(TAG, "BlueToothTxTask created successfully");
 
 	// 创建数据存储任务
 	RTOSRet =

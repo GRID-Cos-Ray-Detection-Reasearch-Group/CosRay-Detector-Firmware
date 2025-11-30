@@ -3,7 +3,6 @@
 
 static const char *TAG = "DataPeripheralModule";
 
-// TODO：生成测试数据
 static void GenTestPkg(uint8_t *TestBuffer, uint8_t PkgType, uint32_t PkgId) {
 	// 根据PkgType生成不同类型的数据包
 	if (PkgType == 0x01) {
@@ -46,22 +45,48 @@ void RunDataPeripheral(void) {
 	while (1) {
 		bool cmdProcessed = false;
 		if (xQueueReceive(DataQueue, &cmd, portMAX_DELAY) == pdTRUE) {
-			ESP_LOGI(TAG, "Received command: 0x%02X%02X", cmd.data[0], cmd.data[1]);
-			if (cmd.data[0] == 0x01) { // 发送数据包
-				if (xSemaphoreTake(TxBufferMutex, 0) == pdTRUE) {
-					if (xSemaphoreTake(TxBufferReadySemaphore, 0) == pdTRUE) {
-						uint32_t PkgId = ((uint32_t) cmd.data[2] << 24) |
-										((uint32_t) cmd.data[3] << 16) |
-										((uint32_t) cmd.data[4] << 8) |
-										((uint32_t) cmd.data[5]);
-						GenTestPkg(TxBuffer, cmd.data[1], PkgId);
-						// 获取信号量，写入TxBuffer
-						xSemaphoreGive(TxBufferMutex);
-						cmdProcessed = true;
-						ESP_LOGI(TAG, "Test data with id %u generated and stored in TxBuffer", (unsigned) PkgId);
-					}
-					else xSemaphoreGive(TxBufferMutex);
+			uint8_t opcode = cmd.data[0];
+			ESP_LOGI(TAG, "Received command: 0x%02X", opcode);
+			if (opcode == START) { // 发送数据包
+				ESP_LOGI(TAG, "Starting data transmission...");
+				// 生成并发送测试数据包
+				uint32_t pkgId = cmd.data[1] << 24 |
+								 cmd.data[2] << 16 |
+								 cmd.data[3] << 8 |
+								 cmd.data[4];
+				TxPkg_t TxPkg;
+				GenTestPkg(TxPkg.data, cmd.data[5], pkgId); // 生成指定类型的数据包
+				TxPkg.length = DATA_PACKAGE_SIZE;
+				if (xQueueSend(TxQueue, &TxPkg, pdMS_TO_TICKS(100)) != pdTRUE) {
+					ESP_LOGE(TAG, "Failed to enqueue TxPkg");
 				}
+				cmdProcessed = true;
+			}
+			else if (cmd.data[0] == STOP) { // 停止发送数据包
+				ESP_LOGI(TAG, "Stopping data transmission...");
+				cmdProcessed = true;
+			}
+			else if (cmd.data[0] == ACK) { // 处理ACK
+				uint32_t ackedPkgId = cmd.data[1] << 24 |
+									  cmd.data[2] << 16 |
+									  cmd.data[3] << 8 |
+									  cmd.data[4];
+				ESP_LOGI(TAG, "Received ACK for package ID: %u", (unsigned) ackedPkgId);
+				cmdProcessed = true;
+			}
+			else if (cmd.data[0] == NACK) { // 处理NACK
+				uint32_t nackedPkgId = cmd.data[1] << 24 |
+									   cmd.data[2] << 16 |
+									   cmd.data[3] << 8 |
+									   cmd.data[4];
+				TxPkg_t TxPkg;
+				GenTestPkg(TxPkg.data, cmd.data[5], nackedPkgId); // 重新生成指定类型的数据包
+				if (xQueueSend(TxQueue, &TxPkg, pdMS_TO_TICKS(100)) != pdTRUE) {
+					ESP_LOGE(TAG, "Failed to re-enqueue TxPkg for NACKed package ID: %u", (unsigned) nackedPkgId);
+				} else {
+					ESP_LOGI(TAG, "Re-enqueued TxPkg for NACKed package ID: %u", (unsigned) nackedPkgId);
+				}
+				cmdProcessed = true;
 			}
 			if (!cmdProcessed) {
 				if (xQueueSend(DataQueue, &cmd, 0) != pdTRUE) {
