@@ -1,4 +1,5 @@
 #include "bsp.h"
+#include "esp_log.h"
 
 static const char *TAG = "DataPeripheralModule";
 

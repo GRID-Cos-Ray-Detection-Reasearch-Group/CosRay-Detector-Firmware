@@ -149,10 +149,10 @@ static void CommandHandlerTask(void *pvParameters) {
 		Command_t cmdMsg;
 		if (xQueueReceive(CommandQueue, &cmdMsg, portMAX_DELAY) == pdTRUE) {
 			// 处理命令
-			ESP_LOGI(TAG, "Received command of length %d", cmdMsg.len);
 			switch (cmdMsg.data[0]) {
 			case 0x01: // 发送数据包
 				xQueueSend(DataQueue, &cmdMsg, portMAX_DELAY);
+				// TODO: 确认此处阻塞无需修改
 				break;
 			default:
 				break;

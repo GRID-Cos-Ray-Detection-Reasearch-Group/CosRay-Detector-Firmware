@@ -26,9 +26,6 @@ uint16_t CalcCRC(const uint8_t *data, size_t length) {
 }
 
 esp_err_t BSPInit(void) {
-	for (size_t i = 0; i < CMD_BUFFER_SIZE; i++) {
-		RxBuffer[i] = 0;
-	}
 	for (size_t i = 0; i < DATA_BUFFER_SIZE; i++) {
 		TxBuffer[i] = 0;
 	}
