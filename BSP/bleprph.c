@@ -20,54 +20,52 @@ static bool BLEConnected = false;
 static int GAPEventCallback(struct ble_gap_event *Event, void *Arg);
 
 // 特征访问回调
-static int DataAccessCallback(uint16_t ConnHandle, uint16_t attr_handle,
+static int GATTControlCharAccessCallback(uint16_t ConnHandle, uint16_t attr_handle,
+							  struct ble_gatt_access_ctxt *ctxt, void *arg);
+static int GATTDataCharAccessCallback(uint16_t ConnHandle, uint16_t attr_handle,
 							  struct ble_gatt_access_ctxt *ctxt, void *arg);
 
-// 自定义服务UUID
+// UUID
 static const ble_uuid128_t MuonServiceUUID = {
 	.u = {.type = BLE_UUID_TYPE_128},
 	.value = {0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0x01, 0x02, 0x03,
 			  0x04, 0x05, 0x06, 0x07, 0x08}};
-
-// 数据特征UUID
+static const ble_uuid128_t ControlCharUUID = {
+	.u = {.type = BLE_UUID_TYPE_128},
+	.value = {0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0x01, 0x02, 0x03, 0x04,
+			0x05, 0x06, 0x07, 0x09, 0x01}};
 static const ble_uuid128_t DataCharUUID = {
 	.u = {.type = BLE_UUID_TYPE_128},
 	.value = {0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0x01, 0x02, 0x03,
 			  0x04, 0x05, 0x06, 0x07, 0x09}};
 
-// 命令特征UUID
-static const ble_uuid128_t CMDCharUUID = {
-	.u = {.type = BLE_UUID_TYPE_128},
-	.value = {0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef, 0x01, 0x02, 0x03, 0x04,
-			  0x05, 0x06, 0x07, 0x09, 0x01}};
-
 // 特征句柄
 static uint16_t DataCharValHandle;
-static uint16_t CMDCharValHandle;
-static uint16_t DataCharAttrHandle;
-static uint16_t CMDCharAttrHandle;
-
-// GATT特征定义
-static const struct ble_gatt_chr_def DataCharDef = {
-	.uuid = &DataCharUUID.u,
-	.access_cb = DataAccessCallback,
-	.flags = BLE_GATT_CHR_F_READ,
-	.val_handle = &DataCharValHandle,
-};
-static const struct ble_gatt_chr_def CMDCharDef = {
-	.uuid = &CMDCharUUID.u,
-	.access_cb = DataAccessCallback,
-	.flags = BLE_GATT_CHR_F_WRITE,
-	.val_handle = &CMDCharValHandle,
-};
+static uint16_t ControlCharValHandle;
 
 // GATT服务定义
 static const struct ble_gatt_svc_def GATTServerServices[] = {
-	{.type = BLE_GATT_SVC_TYPE_PRIMARY,
-	 .uuid = &MuonServiceUUID.u,
-	 .characteristics =
-		 (struct ble_gatt_chr_def[]){DataCharDef, CMDCharDef, {0}}},
-	{0}};
+    {
+        .type = BLE_GATT_SVC_TYPE_PRIMARY,
+        .uuid = &MuonServiceUUID.u,
+        .characteristics = (struct ble_gatt_chr_def[]) {
+            {
+                .uuid = &ControlCharUUID.u,
+                .access_cb = GATTControlCharAccessCallback,
+                .flags = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_NO_RSP,
+                .val_handle = &ControlCharValHandle,
+            },
+            {
+                .uuid = &DataCharUUID.u,
+                .access_cb = GATTDataCharAccessCallback,
+                .flags = BLE_GATT_CHR_F_NOTIFY,
+                .val_handle = &DataCharValHandle,
+            },
+            {0}
+        }
+    },
+    {0}
+};
 
 // 开始广播
 static void StartAdvertising(void) {
@@ -109,12 +107,10 @@ static int InitGATTServer(void) {
 	int rc;
 	rc = ble_gatts_count_cfg(GATTServerServices);
 	if (rc) return rc;
+	ESP_LOGI(TAG, "GATT services counted");
 	rc = ble_gatts_add_svcs(GATTServerServices);
 	if (rc) return rc;
-	rc = ble_gatts_find_chr(&MuonServiceUUID.u, &DataCharUUID.u, NULL, &DataCharAttrHandle);
-	if (rc) return rc;
-	rc = ble_gatts_find_chr(&MuonServiceUUID.u, &CMDCharUUID.u, NULL, &CMDCharAttrHandle);
-	if (rc) return rc;
+	ESP_LOGI(TAG, "GATT services added");
 	return 0;
 }
 
@@ -127,6 +123,7 @@ static void OnSyncCallback(void) {
 		ESP_LOGE(TAG, "Error setting device name: %d", rc);
 		return;
 	}
+
 	// 开始广播
 	StartAdvertising();
 
@@ -151,12 +148,13 @@ esp_err_t InitBlueTooth(void) {
 	}
 
 	// 初始化 GATT 服务器
-	ble_hs_cfg.sync_cb = OnSyncCallback;
-	int rc = InitGATTServer();
-	if (rc != 0) {
-		ESP_LOGE(TAG, "Error initializing GATT server: %d", rc);
-		return ESP_FAIL;
+	ret = InitGATTServer();
+	if (ret != 0) {
+		ESP_LOGE(TAG, "Error initializing GATT server: %d", ret);
+		return ret;
 	}
+
+	ble_hs_cfg.sync_cb = OnSyncCallback;
 	return ESP_OK;
 }
 
@@ -172,6 +170,9 @@ static int GAPEventCallback(struct ble_gap_event *Event, void *Arg) {
 		ESP_LOGI(TAG, "Device disconnected");
 		ConnHandle = BLE_HS_CONN_HANDLE_NONE;
 		BLEConnected = false;
+		Command_t stop;
+		stop.data[0] = STOP;
+		xQueueSend(CommandQueue, &stop, 0); // 断开连接时发送 STOP 命令以中止命令处理任务
 		StartAdvertising();
 		break;
 	default:
@@ -180,41 +181,68 @@ static int GAPEventCallback(struct ble_gap_event *Event, void *Arg) {
 	return 0;
 }
 
-// Data 特征 read 访问回调
-static int DataAccessCallback(uint16_t ConnHandle, uint16_t attr_handle,
+// 特征访问回调
+static int GATTControlCharAccessCallback(uint16_t ConnHandle, uint16_t attr_handle,
 							  struct ble_gatt_access_ctxt *ctxt, void *arg) {
-	if (ctxt->op == BLE_GATT_ACCESS_OP_READ_CHR) {
-		if (attr_handle != DataCharAttrHandle) {
-			ESP_LOGE(TAG, "Read from invalid handle");
-			return BLE_ATT_ERR_READ_NOT_PERMITTED;
+	if (ctxt->op == BLE_GATT_ACCESS_OP_WRITE_CHR) {
+		size_t len = OS_MBUF_PKTLEN(ctxt->om);
+		if (len != sizeof(CommandPkg_t)) {
+			ESP_LOGE(TAG, "Invalid command length: %d", len);
+			return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
 		}
-		// TODO 获取信号量
-		int rc = os_mbuf_append(ctxt->om, TxBufferReadPtr, DATA_BUFFER_SIZE);
-		return rc == 0 ? 0 : BLE_ATT_ERR_INSUFFICIENT_RES;
-	} else if (ctxt->op) {
-		if (attr_handle != CMDCharAttrHandle) {
-			ESP_LOGE(TAG, "Write to invalid handle");
-			return BLE_ATT_ERR_WRITE_NOT_PERMITTED;
-		}
-		int len = OS_MBUF_PKTLEN(ctxt->om);
-		if (len > CMD_BUFFER_SIZE)
-			len = CMD_BUFFER_SIZE;
-		int rc = os_mbuf_copydata(ctxt->om, 0, len, &RxBuffer);
+		CommandPkg_t cmdPkg;
+		int rc = os_mbuf_copydata(ctxt->om, 0, len, (uint8_t*) &cmdPkg);
 		if (rc) {
+			return BLE_ATT_ERR_UNLIKELY;
+		}
+		// 校验CRC
+		uint16_t calcCrc = CalcCRC((uint8_t *)&cmdPkg.cmd, sizeof(Command_t) - 2);
+		if (calcCrc != cmdPkg.crc) {
+			ESP_LOGE(TAG, "Invalid command CRC: received 0x%04X, calculated 0x%04X",
+					 cmdPkg.crc, calcCrc);
 			return BLE_ATT_ERR_UNLIKELY;
 		}
 
 		// 将命令放入队列
-		CommandMessage_t msg;
-		msg.len = len;
-		os_mbuf_copydata(ctxt->om, 0, len, msg.data);
-		if (xQueueSend(CommandQueue, &msg, 0) != pdTRUE) {
+		if (xQueueSend(CommandQueue, &cmdPkg.cmd, 0) != pdTRUE) {
 			ESP_LOGE(TAG, "Failed to enqueue command message");
 			return BLE_ATT_ERR_UNLIKELY;
 		}
 		return 0;
 	}
 	return 0;
+}
+static int GATTDataCharAccessCallback(uint16_t ConnHandle, uint16_t attr_handle,
+							  struct ble_gatt_access_ctxt *ctxt, void *arg) {
+	// 数据特征不支持读写
+	return BLE_ATT_ERR_READ_NOT_PERMITTED;
+}
+
+int SendNotify(uint8_t *buf, size_t len) {
+    if (!BLEConnected) {
+        ESP_LOGW(TAG, "No BLE connection, cannot send notification");
+        return 0;
+    }
+
+    if (len == 0) {
+        ESP_LOGE(TAG, "Invalid length for notify: %u", (unsigned)len);
+        return 1;
+    }
+
+    struct os_mbuf *om = ble_hs_mbuf_from_flat((const void *)buf, len);
+    if (om == NULL) {
+        ESP_LOGE(TAG, "ble_hs_mbuf_from_flat failed - no mbuf");
+        return 1;
+    }
+
+    int rc = ble_gatts_notify_custom(ConnHandle, DataCharValHandle, om);
+    if (rc != 0) {
+        ESP_LOGE(TAG, "ble_gatts_notify failed: %d", rc);
+        os_mbuf_free_chain(om);
+        return rc;
+    }
+
+    return 0;
 }
 
 void RunBlueToothHost(void) {

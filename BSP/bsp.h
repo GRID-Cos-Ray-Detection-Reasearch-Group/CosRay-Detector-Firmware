@@ -5,24 +5,21 @@
 #include "typedefs.h"
 
 // 缓冲区定义
-extern volatile uint8_t RxBuffer[CMD_BUFFER_SIZE];
-extern volatile uint8_t TxBuffer[DATA_BUFFER_SIZE * 2];
-extern volatile uint8_t *TxBufferReadPtr;
-extern volatile uint8_t *TxBufferWritePtr;
-extern volatile uint8_t gpsBuffer[256];
+extern uint8_t gpsBuffer[256];
 
 // 队列定义
 extern QueueHandle_t CommandQueue;
 extern QueueHandle_t DataQueue;
+extern QueueHandle_t TxQueue;
 
 // 信号量定义
-extern SemaphoreHandle_t TxBufferMutex;
 
 // BSP Interface functions
 esp_err_t BSPInit(void);
 
 esp_err_t InitBlueTooth(void);
 void RunBlueToothHost(void);
+int SendNotify(uint8_t *buf, size_t len);
 
 esp_err_t InitDataPeripheral(void);
 void RunDataPeripheral(void);
