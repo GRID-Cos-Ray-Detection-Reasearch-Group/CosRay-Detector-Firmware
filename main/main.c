@@ -220,7 +220,6 @@ void InterruptSetup(void) {
 
 void AppSetup(void) {
 	// 创建信号量
-
 	// 创建消息队列
 	CommandQueue = xQueueCreate(COMMAND_QUEUE_SIZE, sizeof(Command_t));
 	if (CommandQueue == NULL) {
