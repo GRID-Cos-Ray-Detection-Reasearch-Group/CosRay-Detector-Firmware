@@ -1,8 +1,8 @@
 #ifndef TYPEDEFS_H
 #define TYPEDEFS_H
 
-#include <stdio.h>
 #include "config.h"
+#include <stdio.h>
 
 uint16_t CalcCRC(const uint8_t *data, size_t length);
 
@@ -118,21 +118,20 @@ typedef struct {
 } TxPkg_t;
 #pragma pack(pop)
 
-
 #pragma pack(push, 1)
 typedef struct {
-    uint16_t header;        // 帧头 (固定为 PACKET_HEADER = 0xAA55)
-    uint8_t cmd_type;       // 指令类型 
-    uint8_t param_len;      // 参数长度 (0 ~ (RX_BUFFER_SIZE - PACKET_OVERHEAD))
-    uint8_t params[];       // 可变长度参数 
+	uint16_t header;   // 帧头 (固定为 PACKET_HEADER = 0xAA55)
+	uint8_t cmd_type;  // 指令类型
+	uint8_t param_len; // 参数长度 (0 ~ (RX_BUFFER_SIZE - PACKET_OVERHEAD))
+	uint8_t params[];  // 可变长度参数
 } CommandFrameHeader_t;
 #pragma pack(pop)
 
 #pragma pack(push, 1)
 typedef struct {
-    CommandFrameHeader_t header;  // 命令帧头部
-    uint16_t checksum;            // 校验和 
-    uint16_t trailer;             // 帧尾 (固定为 PACKET_TRAILER = 0x55AA)
+	CommandFrameHeader_t header; // 命令帧头部
+	uint16_t checksum;			 // 校验和
+	uint16_t trailer;			 // 帧尾 (固定为 PACKET_TRAILER = 0x55AA)
 } CommandFrame_t;
 #pragma pack(pop)
 
