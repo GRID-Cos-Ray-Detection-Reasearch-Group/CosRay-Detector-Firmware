@@ -14,6 +14,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <string.h>
+#include "flashstorage.h"
 
 static const char *TAG = "DataPeripheral";
 

@@ -13,7 +13,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "FlashStorage.h"
+#include "flashstorage.h"
 #include "bsp.h"
 #include "driver/gpio.h"
 #include "driver/i2c.h"
@@ -172,7 +172,6 @@ void MuonInttSetup(void) {
 		.intr_type = GPIO_INTR_POSEDGE,
 	};
 	gpio_config(&io);
-	gpio_install_isr_service(0);
 	gpio_isr_handler_add(PIN_TRIGGER, trigger_isr, NULL);
 	ESP_LOGI(TAG, "Muon trigger ISR installed successfully");
 }
@@ -331,6 +330,12 @@ void AppSetup(void) {
 		return;
 	}
 
+	if (FlashStorageInit() != FLASH_OK) {
+        ESP_LOGE(TAG, "Flash storage init failed");
+        return;
+    }
+
+
 	// 创建任务
 	xTaskCreate(AppBlueTooth, "BlueToothTask", BLUETOOTH_TASK_STACK_SIZE, NULL,
 				BLUETOOTH_TASK_PRIORITY, &bluetoothTaskHandle);
@@ -349,6 +354,13 @@ void AppSetup(void) {
 	xTaskCreate(AppDataStore, "DataStoreTask", DATA_STORE_TASK_STACK_SIZE, NULL,
 				DATA_STORE_TASK_PRIORITY, &dataStoreTaskHandle);
 	ESP_LOGI(TAG, "DataStoreTask created successfully");
+	
+	xTaskCreate(AppDataStoreTask, "FlashStoreTask", 
+                4096,  // 栈大小
+                NULL, 
+                4,     // 任务优先级（合理即可）
+                NULL);
+    ESP_LOGI(TAG, "FlashStoreTask created");
 }
 
 void app_main(void) {

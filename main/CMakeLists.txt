@@ -4,6 +4,7 @@ idf_component_register(
                 "../BSP/bsp.c"
                 "../BSP/bleprph.c"
                 "../BSP/dataprph.c"
+                "../BSP/flashstorage.c"
     INCLUDE_DIRS "."
                 "../BSP/"
 )
