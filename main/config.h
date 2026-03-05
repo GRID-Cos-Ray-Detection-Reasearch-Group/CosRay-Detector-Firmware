@@ -29,7 +29,8 @@
 #define DATA_TYPE_MUON 3
 #define DATA_TYPE_OTHER 4
 
-// 任务句柄声明（NimBLE 主机任务由 nimble_port_freertos_init 内部管理，无需手动句柄）
+// 任务句柄声明（NimBLE 主机任务由 nimble_port_freertos_init
+// 内部管理，无需手动句柄）
 extern TaskHandle_t dataProcessTaskHandle;
 extern TaskHandle_t dataStoreTaskHandle;
 extern TaskHandle_t telTaskHandle;
@@ -46,19 +47,19 @@ extern TaskHandle_t commandHandlerTaskHandle;
 #define DATA_PACKAGE_SIZE 512
 
 // 内部操作码（ISR → DataQueue 消息标识，与 BSP/dataprph.c 共用）
-#define OPCODE_TRIGGER   0xA0  // μ子比较器触发
-#define OPCODE_PPS       0xA1  // GPS PPS 秒脉冲
-#define OPCODE_TMP_ALERT 0xA2  // TMP112 温度报警
-#define OPCODE_GPS       0xA3  // GPS 数据更新通知
+#define OPCODE_TRIGGER 0xA0   // μ子比较器触发
+#define OPCODE_PPS 0xA1       // GPS PPS 秒脉冲
+#define OPCODE_TMP_ALERT 0xA2 // TMP112 温度报警
+#define OPCODE_GPS 0xA3       // GPS 数据更新通知
 
 // 硬件引脚定义（ESP32-S3 GPIO 编号）
-#define PIN_SIGNAL      4   // ADC 信号输入（SiPM 信号幅度）
-#define PIN_TMP_ALERT   5   // TMP112 温度报警中断
-#define PIN_CATHODE_MON 6   // SiPM 阴极电压监测（ADC）
-#define PIN_MON         7   // SiPM 电流监测（ADC）
-#define PIN_CHARGEIN    8   // 充电状态检测
-#define PIN_RESTART     9   // 复位输出
-#define PIN_TRIGGER     10  // μ子比较器触发输入（上升沿中断）
-#define PIN_PPS         11  // GPS PPS 秒脉冲输入（上升沿中断）
+#define PIN_SIGNAL 4      // ADC 信号输入（SiPM 信号幅度）
+#define PIN_TMP_ALERT 5   // TMP112 温度报警中断
+#define PIN_CATHODE_MON 6 // SiPM 阴极电压监测（ADC）
+#define PIN_MON 7         // SiPM 电流监测（ADC）
+#define PIN_CHARGEIN 8    // 充电状态检测
+#define PIN_RESTART 9     // 复位输出
+#define PIN_TRIGGER 10    // μ子比较器触发输入（上升沿中断）
+#define PIN_PPS 11        // GPS PPS 秒脉冲输入（上升沿中断）
 
 #endif // CONFIG_H

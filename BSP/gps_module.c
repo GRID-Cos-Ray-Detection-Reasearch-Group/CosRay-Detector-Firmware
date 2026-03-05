@@ -2,8 +2,8 @@
 #include "driver/gpio.h"
 #include "driver/uart.h"
 #include "esp_log.h"
-#include "freertos/task.h"
 #include "freertos/portmacro.h"
+#include "freertos/task.h"
 #include "string.h"
 
 static const char *TAG = "GPS_MODULE";
@@ -288,8 +288,7 @@ void gps_parser_task(void *pvParameters) {
 		}
 
 		if (find_ubx_packet(&gps_ring_buffer, &current_packet)) {
-			ESP_LOGD(TAG,
-					 "Found UBX packet: class=0x%02X, id=0x%02X, len=%d",
+			ESP_LOGD(TAG, "Found UBX packet: class=0x%02X, id=0x%02X, len=%d",
 					 current_packet.class_id, current_packet.msg_id,
 					 current_packet.length);
 
@@ -300,21 +299,20 @@ void gps_parser_task(void *pvParameters) {
 					size_t offset = current_packet.data_offset;
 
 					while (bytes_copied < current_packet.length) {
-						local_buffer[bytes_copied] = gps_ring_buffer_mem[offset];
+						local_buffer[bytes_copied] =
+							gps_ring_buffer_mem[offset];
 						bytes_copied++;
 						offset = (offset + 1) % GPS_RING_BUFFER_SIZE;
 					}
 
-					if (gps_extract_nav_pvt_hex(local_buffer,
-												current_packet.length,
-												&parsed_hex)) {
+					if (gps_extract_nav_pvt_hex(
+							local_buffer, current_packet.length, &parsed_hex)) {
 						if (xSemaphoreTake(gps_hex_data_mutex,
 										   pdMS_TO_TICKS(100)) == pdTRUE) {
 							current_gps_hex_data = parsed_hex;
 							xSemaphoreGive(gps_hex_data_mutex);
 						}
-						ESP_LOGD(TAG,
-								 "GPS: %02X/%02X/%02X %02X:%02X:%02X",
+						ESP_LOGD(TAG, "GPS: %02X/%02X/%02X %02X:%02X:%02X",
 								 parsed_hex.year[0], parsed_hex.month,
 								 parsed_hex.day, parsed_hex.hour,
 								 parsed_hex.minute, parsed_hex.second);

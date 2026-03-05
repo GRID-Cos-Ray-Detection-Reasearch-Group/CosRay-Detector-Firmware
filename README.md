@@ -7,6 +7,7 @@ MPL2.0许可协议，修改不可闭源，但新增代码协议不必延续MPL�
 ## 快速上手 / Build & Flash
 
 ### 环境要求
+
 - **ESP-IDF v5.3.x**（推荐 5.3.1）
 - 目标芯片：**ESP32-S3**
 - Python 3.12+
@@ -29,34 +30,34 @@ idf.py -p /dev/ttyUSBx flash monitor
 
 ### 已实现功能
 
-| 功能 | 状态 | 说明 |
-|------|------|------|
-| SiPM 偏压（LT3482 DCDC + SPI DAC） | TODO | 引脚预留，驱动待实现 |
-| μ子触发中断 + ADC 采样 | ✅ | GPIO10 触发，ADC 采集信号幅度 |
-| GPS 时间同步（UBX NAV-PVT） | ✅ | UART1 RX=GPIO17，PPS=GPIO11 |
-| GPS PPS 精确时间轴 | ✅ | PPS 中断 + CPU 时钟计数 |
-| Flash 存储（W25N01KV SPI NAND） | ✅ | SPI2，MOSI=GPIO42，MISO=GPIO47 |
-| 蓝牙 BLE 数据传输（NimBLE） | ✅ | 设备名 "MuonDetector"，自定义 GATT 服务 |
-| μ子事件数据包 + 时间线数据包 | ✅ | 每35个事件打包，每5秒时间线快照 |
+| 功能                               | 状态 | 说明                                    |
+| ---------------------------------- | ---- | --------------------------------------- |
+| SiPM 偏压（LT3482 DCDC + SPI DAC） | TODO | 引脚预留，驱动待实现                    |
+| μ子触发中断 + ADC 采样             | ✅   | GPIO10 触发，ADC 采集信号幅度           |
+| GPS 时间同步（UBX NAV-PVT）        | ✅   | UART1 RX=GPIO17，PPS=GPIO11             |
+| GPS PPS 精确时间轴                 | ✅   | PPS 中断 + CPU 时钟计数                 |
+| Flash 存储（W25N01KV SPI NAND）    | ✅   | SPI2，MOSI=GPIO42，MISO=GPIO47          |
+| 蓝牙 BLE 数据传输（NimBLE）        | ✅   | 设备名 "MuonDetector"，自定义 GATT 服务 |
+| μ子事件数据包 + 时间线数据包       | ✅   | 每35个事件打包，每5秒时间线快照         |
 
 ### 硬件引脚分配
 
-| 信号 | GPIO | 说明 |
-|------|------|------|
-| ADC 信号输入 | GPIO4 | SiPM 信号幅度采样 |
-| TMP112 温度报警 | GPIO5 | 双沿中断 |
-| SiPM 阴极电压监测 | GPIO6 | ADC 采样 |
-| SiPM 电流监测 | GPIO7 | ADC 采样 |
-| μ子触发（比较器） | GPIO10 | 上升沿中断 |
-| GPS PPS | GPIO11 | 上升沿中断 |
-| GPS UART RX | GPIO17 | UART1 |
-| GPS UART TX | GPIO18 | UART1 |
-| Flash CS | GPIO35 | SPI2 |
-| Flash CLK | GPIO48 | SPI2 |
-| Flash MOSI | GPIO42 | SPI2 |
-| Flash MISO | GPIO47 | SPI2 |
-| Flash WP | GPIO36 | SPI2 |
-| Flash HOLD | GPIO38 | SPI2 |
+| 信号              | GPIO   | 说明              |
+| ----------------- | ------ | ----------------- |
+| ADC 信号输入      | GPIO4  | SiPM 信号幅度采样 |
+| TMP112 温度报警   | GPIO5  | 双沿中断          |
+| SiPM 阴极电压监测 | GPIO6  | ADC 采样          |
+| SiPM 电流监测     | GPIO7  | ADC 采样          |
+| μ子触发（比较器） | GPIO10 | 上升沿中断        |
+| GPS PPS           | GPIO11 | 上升沿中断        |
+| GPS UART RX       | GPIO17 | UART1             |
+| GPS UART TX       | GPIO18 | UART1             |
+| Flash CS          | GPIO35 | SPI2              |
+| Flash CLK         | GPIO48 | SPI2              |
+| Flash MOSI        | GPIO42 | SPI2              |
+| Flash MISO        | GPIO47 | SPI2              |
+| Flash WP          | GPIO36 | SPI2              |
+| Flash HOLD        | GPIO38 | SPI2              |
 
 ### BLE 服务说明
 
@@ -126,7 +127,6 @@ SCIPkgType SCIBuf[2][8] = {0};
 /_
 High flux mode global var (edit by LLH 2024.11.21)
 _/
-
 
 1.2. 协作开发方式：每次实现新功能前，从远程仓库拉取（pull）最新版本代码到本地仓库，再新建一个分支（branch）。本地仓库多次
 commit后，编译测试实现了期望的功能，把本地仓库push到新建分支上，同时在push时提交一份说明。之后再提交一个pull request，

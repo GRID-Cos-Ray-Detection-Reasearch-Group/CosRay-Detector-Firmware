@@ -9,12 +9,12 @@
 #include <string.h>
 
 #include "bsp.h"
-#include "flashstorage.h"
-#include "gps_module.h"
-#include "typedefs.h"
 #include "driver/gpio.h"
 #include "driver/uart.h"
 #include "esp_timer.h"
+#include "flashstorage.h"
+#include "gps_module.h"
+#include "typedefs.h"
 
 static const char *TAG = "MainModule";
 
@@ -176,7 +176,8 @@ static void BlueToothTxTask(void *pvParameters) {
 	}
 }
 
-// 蓝牙主机任务由 nimble_port_freertos_init() 在 InitBlueTooth() 中自动创建，无需手动创建
+// 蓝牙主机任务由 nimble_port_freertos_init() 在 InitBlueTooth()
+// 中自动创建，无需手动创建
 
 /* ================= 初始化函数 ================= */
 
@@ -234,7 +235,8 @@ void AppSetup(void) {
 	gps_start();
 	ESP_LOGI(TAG, "GPS module started");
 
-	// NimBLE 主机任务已由 InitBlueTooth() → nimble_port_freertos_init() 自动创建
+	// NimBLE 主机任务已由 InitBlueTooth() → nimble_port_freertos_init()
+	// 自动创建
 	ESP_LOGI(TAG, "BLE host task started by nimble_port_freertos_init");
 
 	xTaskCreate(CommandHandlerTask, "CommandHandlerTask",
