@@ -19,7 +19,7 @@ esp_err_t BSPInit(void);
 
 // 蓝牙接口
 esp_err_t InitBlueTooth(void);
-void RunBlueToothHost(void);
+void RunBlueToothHost(void *param);  // NimBLE 主机任务函数（FreeRTOS 任务签名）
 int SendNotify(uint8_t *buf, size_t len);
 
 // 数据外设接口（ADC、定时器、muon事件处理）

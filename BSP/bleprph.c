@@ -101,6 +101,11 @@ static void StartAdvertising(void) {
 // GATT 服务初始化
 static int InitGATTServer(void) {
 	int rc;
+
+	// 初始化标准 GAP 和 GATT 服务（NimBLE 必要）
+	ble_svc_gap_init();
+	ble_svc_gatt_init();
+
 	rc = ble_gatts_count_cfg(GATTServerServices);
 	if (rc)
 		return rc;
@@ -133,21 +138,29 @@ esp_err_t InitBlueTooth(void) {
 	}
 	ESP_ERROR_CHECK(ret);
 
-	// 初始化 NimBLE
+	// 初始化 NimBLE 端口
 	ret = nimble_port_init();
 	if (ret != ESP_OK) {
 		ESP_LOGE(TAG, "Failed to initialize NimBLE: %d", ret);
 		return ret;
 	}
 
-	// 初始化 GATT 服务器
+	// 初始化 GATT 服务（必须在 nimble_port_run() 之前完成）
 	int rc = InitGATTServer();
 	if (rc != 0) {
 		ESP_LOGE(TAG, "Error initializing GATT server: %d", rc);
 		return ESP_FAIL;
 	}
 
+	// 设置 BLE 同步回调
 	ble_hs_cfg.sync_cb = OnSyncCallback;
+
+	// 启动 NimBLE 主机任务（ESP-IDF 推荐方式）：
+	// nimble_port_freertos_init() 在内部创建一个专用 FreeRTOS 任务，
+	// 并以 RunBlueToothHost 作为任务函数执行 nimble_port_run()。
+	// 调用方无需再手动创建 BLE 主机任务。
+	nimble_port_freertos_init(RunBlueToothHost);
+
 	return ESP_OK;
 }
 
@@ -241,10 +254,9 @@ int SendNotify(uint8_t *buf, size_t len) {
 	return 0;
 }
 
-void RunBlueToothHost(void) {
+void RunBlueToothHost(void *param) {
 	ESP_LOGI(TAG, "BLE Host Started");
 	nimble_port_run();
 	ESP_LOGI(TAG, "BLE Host Ended");
 	nimble_port_freertos_deinit();
-	ESP_LOGI(TAG, "NimBLE Port Deinitialized");
 }

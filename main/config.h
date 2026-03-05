@@ -29,9 +29,8 @@
 #define DATA_TYPE_MUON 3
 #define DATA_TYPE_OTHER 4
 
-// 任务句柄声明
+// 任务句柄声明（NimBLE 主机任务由 nimble_port_freertos_init 内部管理，无需手动句柄）
 extern TaskHandle_t dataProcessTaskHandle;
-extern TaskHandle_t bluetoothTaskHandle;
 extern TaskHandle_t dataStoreTaskHandle;
 extern TaskHandle_t telTaskHandle;
 extern TaskHandle_t commandHandlerTaskHandle;

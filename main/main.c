@@ -20,7 +20,6 @@ static const char *TAG = "MainModule";
 
 // 任务句柄
 TaskHandle_t dataProcessTaskHandle;
-TaskHandle_t bluetoothTaskHandle;
 TaskHandle_t bluetoothTxTaskHandle;
 TaskHandle_t commandHandlerTaskHandle;
 TaskHandle_t dataStoreTaskHandle;
@@ -61,7 +60,6 @@ static void MuonInttSetup(void);
 static void TMPAlertIntSetup(void);
 static void AppDataStore(void *pvParameters);
 static void BlueToothTxTask(void *pvParameters);
-static void AppBlueTooth(void *pvParameters);
 static void CommandHandlerTask(void *pvParameters);
 void InterruptSetup(void);
 void AppSetup(void);
@@ -196,13 +194,7 @@ static void BlueToothTxTask(void *pvParameters) {
 	}
 }
 
-// 蓝牙主机任务：运行 NimBLE 协议栈
-static void AppBlueTooth(void *pvParameters) {
-	ESP_LOGI(TAG, "BlueToothTask started");
-	RunBlueToothHost();
-	ESP_LOGI(TAG, "BlueToothTask ended");
-	vTaskDelete(NULL);
-}
+// 蓝牙主机任务由 nimble_port_freertos_init() 在 InitBlueTooth() 中自动创建，无需手动创建
 
 /* ================= 初始化函数 ================= */
 
@@ -260,10 +252,8 @@ void AppSetup(void) {
 	gps_start();
 	ESP_LOGI(TAG, "GPS module started");
 
-	// 创建 FreeRTOS 任务
-	xTaskCreate(AppBlueTooth, "BlueToothTask", BLUETOOTH_TASK_STACK_SIZE, NULL,
-				BLUETOOTH_TASK_PRIORITY, &bluetoothTaskHandle);
-	ESP_LOGI(TAG, "BlueToothTask created");
+	// NimBLE 主机任务已由 InitBlueTooth() → nimble_port_freertos_init() 自动创建
+	ESP_LOGI(TAG, "BLE host task started by nimble_port_freertos_init");
 
 	xTaskCreate(CommandHandlerTask, "CommandHandlerTask",
 				COMMAND_HANDLER_TASK_STACK_SIZE, NULL,
