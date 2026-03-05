@@ -62,4 +62,22 @@ extern TaskHandle_t commandHandlerTaskHandle;
 #define PIN_TRIGGER 10    // μ子比较器触发输入（上升沿中断）
 #define PIN_PPS 11        // GPS PPS 秒脉冲输入（上升沿中断）
 
+// CMD 消息中 CPU 周期计数的编码/解码辅助宏
+// ISR 捕获的 32 位 CPU 周期计数以小端序存于 cmd.data[1..4]
+// 用法（ISR 中编码）：CMD_ENCODE_CCOUNT(cmd, ccount)
+// 用法（任务中解码）：uint32_t cc = CMD_DECODE_CCOUNT(cmd)
+#define CMD_ENCODE_CCOUNT(cmd, ccount)         \
+	do {                                       \
+		(cmd).data[1] = (uint8_t)(ccount);     \
+		(cmd).data[2] = (uint8_t)((ccount) >> 8);  \
+		(cmd).data[3] = (uint8_t)((ccount) >> 16); \
+		(cmd).data[4] = (uint8_t)((ccount) >> 24); \
+	} while (0)
+
+#define CMD_DECODE_CCOUNT(cmd)                           \
+	((uint32_t)(cmd).data[1] |                           \
+	 ((uint32_t)(cmd).data[2] << 8) |                    \
+	 ((uint32_t)(cmd).data[3] << 16) |                   \
+	 ((uint32_t)(cmd).data[4] << 24))
+
 #endif // CONFIG_H

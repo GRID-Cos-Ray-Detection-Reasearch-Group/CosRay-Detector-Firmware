@@ -55,6 +55,7 @@ static uint8_t s_muon_event_index = 0;
 static uint32_t s_muon_pkg_cnt = 0;
 
 static uint32_t s_local_pps_count = 0;
+static uint32_t s_last_pps_ccount = 0; // PPS 到达时刻的 CPU 周期计数（由 pps_isr 捕获）
 static int32_t s_local_gps_long = 0;
 static int32_t s_local_gps_lat = 0;
 static uint32_t s_local_gps_utc = 0;
@@ -122,7 +123,7 @@ static void timeline_send_now(void) {
 	td->pps = s_local_pps_count;
 	td->utc = s_local_gps_utc;
 	td->pps_utc = 0;
-	td->cputime_pps = td->cpu_time;
+	td->cputime_pps = (uint64_t)s_last_pps_ccount;
 	td->gps_long = s_local_gps_long;
 	td->gps_lat = s_local_gps_lat;
 	td->gps_alt = 0;
@@ -290,7 +291,9 @@ void RunDataPeripheral(void) {
 			if (!g_running)
 				continue;
 
-			uint64_t t_us = now_us();
+			// 从命令消息中解码 ISR 捕获的 CPU 周期计数
+			uint32_t ccount = CMD_DECODE_CCOUNT(cmd);
+
 			int raw_signal = adc1_get_raw(ADC_CHANNEL_SIGNAL);
 			int raw_cath = adc1_get_raw(ADC_CHANNEL_CATHODE_MON);
 			int raw_mon = adc1_get_raw(ADC_CHANNEL_MON);
@@ -300,12 +303,15 @@ void RunDataPeripheral(void) {
 
 			if ((uint32_t)raw_signal >= SIPM_THRESHOLD_RAW) {
 				MuonData_t ev;
-				ev.cpu_time = t_us;
+				// cpu_time 存储 ISR 捕获的 CPU 周期计数，
+				// 结合 pps 字段和 TimeLineData_t.cputime_pps 可还原精确到达时刻
+				ev.cpu_time = (uint64_t)ccount;
 				ev.energy = adc_raw_to_energy(raw_signal);
 				ev.pps = s_local_pps_count;
 
-				ESP_LOGI(TAG, "Muon event: energy=%u pps=%u",
-						 (unsigned)ev.energy, (unsigned)ev.pps);
+				ESP_LOGI(TAG, "Muon event: energy=%u pps=%u ccount=%u",
+						 (unsigned)ev.energy, (unsigned)ev.pps,
+						 (unsigned)ccount);
 
 				if (s_muon_event_index < MUON_PKG_MAX_EVENTS) {
 					s_muon_pkg.MuonData[s_muon_event_index++] = ev;
@@ -317,11 +323,14 @@ void RunDataPeripheral(void) {
 			continue;
 		}
 
-		// PPS：GPS秒脉冲，更新本地 PPS 计数
+		// PPS：GPS秒脉冲，更新本地 PPS 计数和周期计数时间戳
 		if (opcode == OPCODE_PPS) {
+			// 从命令消息中解码 ISR 捕获的 CPU 周期计数
+			s_last_pps_ccount = CMD_DECODE_CCOUNT(cmd);
 			s_local_pps_count++;
-			ESP_LOGD(TAG, "PPS received. count=%u",
-					 (unsigned)s_local_pps_count);
+			ESP_LOGD(TAG, "PPS received. count=%u ccount=%u",
+					 (unsigned)s_local_pps_count,
+					 (unsigned)s_last_pps_ccount);
 			continue;
 		}
 

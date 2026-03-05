@@ -1,4 +1,5 @@
 #include "config.h"
+#include "esp_cpu.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
@@ -49,22 +50,31 @@ void AppSetup(void);
 /* ================= ISR 中断处理函数 ================= */
 
 // μ子比较器触发中断（上升沿）
+// 注意：进入中断后立刻读取 CPU 周期计数，以获得硬实时时间戳。
+// 后续结合 PPS 周期计数与 UTC 时间即可计算 μ子准确到达时刻。
 static void IRAM_ATTR trigger_isr(void *arg) {
+	// 第一步：立即捕获 CPU 周期计数（硬实时时间戳），必须置于所有其他操作之前
+	uint32_t ccount = esp_cpu_get_cycle_count();
 	BaseType_t hp = pdFALSE;
 	Command_t cmd;
 	memset(&cmd, 0, sizeof(cmd));
 	cmd.data[0] = OPCODE_TRIGGER;
+	CMD_ENCODE_CCOUNT(cmd, ccount);
 	xQueueSendFromISR(DataQueue, &cmd, &hp);
 	if (hp)
 		portYIELD_FROM_ISR();
 }
 
 // GPS PPS 秒脉冲中断（上升沿）
+// 同样立即捕获 CPU 周期计数，供后续精确定时使用。
 static void IRAM_ATTR pps_isr(void *arg) {
+	// 第一步：立即捕获 CPU 周期计数（PPS 到达时刻的硬实时时间戳），必须置于所有其他操作之前
+	uint32_t ccount = esp_cpu_get_cycle_count();
 	BaseType_t hp = pdFALSE;
 	Command_t cmd;
 	memset(&cmd, 0, sizeof(cmd));
 	cmd.data[0] = OPCODE_PPS;
+	CMD_ENCODE_CCOUNT(cmd, ccount);
 	xQueueSendFromISR(DataQueue, &cmd, &hp);
 	if (hp)
 		portYIELD_FROM_ISR();
