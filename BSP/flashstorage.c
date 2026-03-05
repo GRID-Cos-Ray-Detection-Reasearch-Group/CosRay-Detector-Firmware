@@ -1,12 +1,12 @@
 #include "flashstorage.h"
-#include "typedefs.h"
-#include "esp_log.h"
-#include <inttypes.h>
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
 #include "driver/gpio.h"
 #include "driver/spi_master.h"
+#include "esp_log.h"
 #include "esp_rom_sys.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "typedefs.h"
+#include <inttypes.h>
 #include <string.h>
 
 static const char *TAG = "FlashStorage";
@@ -16,38 +16,38 @@ spi_device_handle_t flash_spi_handle;
 extern QueueHandle_t FlashQueue;
 
 /* ================= SPI NAND 指令 ================= */
-#define CMD_RESET_ENABLE  0x66
+#define CMD_RESET_ENABLE 0x66
 #define CMD_RESET_EXECUTE 0x99
-#define CMD_READ_ID       0x9F
-#define CMD_WRITE_ENABLE  0x06
-#define CMD_PAGE_READ     0x13
-#define CMD_READ_CACHE    0x03
-#define CMD_PROG_LOAD     0x02
-#define CMD_PROG_EXECUTE  0x10
-#define CMD_BLOCK_ERASE   0xD8
+#define CMD_READ_ID 0x9F
+#define CMD_WRITE_ENABLE 0x06
+#define CMD_PAGE_READ 0x13
+#define CMD_READ_CACHE 0x03
+#define CMD_PROG_LOAD 0x02
+#define CMD_PROG_EXECUTE 0x10
+#define CMD_BLOCK_ERASE 0xD8
 
 #define CMD_GET_FEATURE 0x0F
 #define CMD_SET_FEATURE 0x1F
 
 /* ================= Feature Register 地址 ================= */
-#define REG_STATUS  0xC0
+#define REG_STATUS 0xC0
 #define REG_PROTECT 0xA0
 
 /* ================= Status Register 位 ================= */
-#define STATUS_OIP    0x01
-#define STATUS_WEL    0x02
+#define STATUS_OIP 0x01
+#define STATUS_WEL 0x02
 #define STATUS_E_FAIL 0x04
 #define STATUS_P_FAIL 0x08
 #define STATUS_ECC_MASK 0x30
 
 /* ================= Flash 参数 ================= */
-#define W25N_PAGE_SIZE_MAIN_LOCAL  2048
-#define W25N_PAGE_SIZE_OOB_LOCAL   64
+#define W25N_PAGE_SIZE_MAIN_LOCAL 2048
+#define W25N_PAGE_SIZE_OOB_LOCAL 64
 #define W25N_BLOCK_SIZE_PAGE_LOCAL 128
 
-#define JEDEC_MFG_ID   0xEF
-#define JEDEC_DEV_MSB  0xAE
-#define JEDEC_DEV_LSB  0x21
+#define JEDEC_MFG_ID 0xEF
+#define JEDEC_DEV_MSB 0xAE
+#define JEDEC_DEV_LSB 0x21
 
 #define W25N_BAD_BLOCK_MARK 0x00
 
@@ -147,8 +147,7 @@ static esp_err_t SpiInit(void) {
 		.spics_io_num = -1,
 		.queue_size = 5,
 	};
-	ESP_ERROR_CHECK(
-		spi_bus_add_device(SPI2_HOST, &dev_cfg, &flash_spi_handle));
+	ESP_ERROR_CHECK(spi_bus_add_device(SPI2_HOST, &dev_cfg, &flash_spi_handle));
 
 	return ESP_OK;
 }
@@ -329,8 +328,8 @@ static FlashStatus FlashProgLoad(const uint8_t *buf, uint32_t len) {
 }
 
 static FlashStatus FlashProgExecute(uint32_t page) {
-	uint8_t exe[4] = {CMD_PROG_EXECUTE, (page >> 16) & 0xFF,
-					  (page >> 8) & 0xFF, page & 0xFF};
+	uint8_t exe[4] = {CMD_PROG_EXECUTE, (page >> 16) & 0xFF, (page >> 8) & 0xFF,
+					  page & 0xFF};
 	spi_transaction_t t = {.length = 32, .tx_buffer = exe};
 
 	cs_low();
@@ -362,8 +361,8 @@ FlashStatus FlashEraseBlock(uint32_t page) {
 	if (ret != FLASH_OK)
 		return ret;
 
-	uint8_t cmd[4] = {CMD_BLOCK_ERASE, (page >> 16) & 0xFF,
-					  (page >> 8) & 0xFF, page & 0xFF};
+	uint8_t cmd[4] = {CMD_BLOCK_ERASE, (page >> 16) & 0xFF, (page >> 8) & 0xFF,
+					  page & 0xFF};
 	spi_transaction_t t = {.length = 32, .tx_buffer = cmd};
 
 	cs_low();
@@ -476,8 +475,8 @@ void AppDataStoreTask(void *arg) {
 			if (pkg.length == 0 ||
 				pkg.length > (W25N_PAGE_SIZE_MAIN_LOCAL - offset)) {
 				ESP_LOGE(TAG,
-						 "Invalid pkg data (length=%" PRIu32
-						 ", offset=%" PRIu32 ")",
+						 "Invalid pkg data (length=%" PRIu32 ", offset=%" PRIu32
+						 ")",
 						 (uint32_t)pkg.length, (uint32_t)offset);
 				// 重置页缓冲区，防止后续数据错位
 				offset = 0;
@@ -488,8 +487,7 @@ void AppDataStoreTask(void *arg) {
 			memcpy(page_buf + offset, pkg.data, pkg.length);
 			offset += pkg.length;
 
-			ESP_LOGD(TAG,
-					 "Received data (len=%" PRIu32 ", offset=%" PRIu32 ")",
+			ESP_LOGD(TAG, "Received data (len=%" PRIu32 ", offset=%" PRIu32 ")",
 					 (uint32_t)pkg.length, (uint32_t)offset);
 
 			if (offset >= W25N_PAGE_SIZE_MAIN_LOCAL) {
@@ -504,8 +502,7 @@ void AppDataStoreTask(void *arg) {
 					continue;
 				} else if (ret != FLASH_OK) {
 					ESP_LOGE(TAG,
-							 "FlashWrite failed (page=%" PRIu32
-							 ", err=%d)",
+							 "FlashWrite failed (page=%" PRIu32 ", err=%d)",
 							 current_page, ret);
 				}
 

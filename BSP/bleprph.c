@@ -206,8 +206,7 @@ static int GATTControlCharAccessCallback(uint16_t ConnHandle,
 			return BLE_ATT_ERR_UNLIKELY;
 		}
 		// 校验CRC（覆盖完整 Command_t 数据）
-		uint16_t calcCrc =
-			CalcCRC((uint8_t *)&cmdPkg.cmd, sizeof(Command_t));
+		uint16_t calcCrc = CalcCRC((uint8_t *)&cmdPkg.cmd, sizeof(Command_t));
 		if (calcCrc != cmdPkg.crc) {
 			ESP_LOGE(TAG,
 					 "Invalid command CRC: received 0x%04X, calculated 0x%04X",

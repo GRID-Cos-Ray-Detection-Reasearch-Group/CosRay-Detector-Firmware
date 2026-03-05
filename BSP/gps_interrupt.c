@@ -1,11 +1,11 @@
-#include "gps_module.h"
-#include "driver/uart.h"
 #include "driver/gpio.h"
+#include "driver/uart.h"
 #include "esp_err.h"
 #include "esp_log.h"
 #include "esp_timer.h"
-#include "freertos/task.h"
 #include "freertos/queue.h"
+#include "freertos/task.h"
+#include "gps_module.h"
 #include "string.h"
 
 static const char *TAG = "GPS_INTERRUPT";

@@ -2,9 +2,9 @@
 #define TYPEDEFS_H
 
 #include "config.h"
-#include <stdio.h>
-#include <stdint.h>
 #include <stddef.h>
+#include <stdint.h>
+#include <stdio.h>
 
 uint16_t CalcCRC(const uint8_t *data, size_t length);
 
@@ -54,10 +54,10 @@ typedef struct {
 // 时间线数据包（最多10个时间线条目）
 #pragma pack(push, 1)
 typedef struct {
-	uint8_t head[3];		  // 0x12, 0x34, 0x56 for timeline package
-	uint32_t PkgCnt;		  // 全局timeline数据包计数
+	uint8_t head[3]; // 0x12, 0x34, 0x56 for timeline package
+	uint32_t PkgCnt; // 全局timeline数据包计数
 	TimeLineData_t TimeLineData[10];
-	uint8_t tail[3];		  // 0x78, 0x9A, 0xBC for timeline package
+	uint8_t tail[3]; // 0x78, 0x9A, 0xBC for timeline package
 	uint8_t reserved[20];
 	uint16_t crc;
 } TimeLinePkg_t;
@@ -80,17 +80,17 @@ typedef enum {
 /*
 命令列表
 - 0x01 : START 开始传输
-    [1..4] : 数据包的 ID，大端存储
-    [5] : 传输的数据类型
-        0x01 : μ子数据包
-        0x02 : 时间线数据包
+	[1..4] : 数据包的 ID，大端存储
+	[5] : 传输的数据类型
+		0x01 : μ子数据包
+		0x02 : 时间线数据包
 - 0x02 : STOP 停止传输
 - 0x03 : ACK 确认收到数据包
-    [1..4] : 已成功收到的数据包的 ID，大端存储
-    [5] : 数据类型
+	[1..4] : 已成功收到的数据包的 ID，大端存储
+	[5] : 数据类型
 - 0x04 : NACK 请求重传数据包
-    [1..4] : 需要重传的数据包的 ID，大端存储
-    [5] : 数据类型
+	[1..4] : 需要重传的数据包的 ID，大端存储
+	[5] : 数据类型
 - 0x05 : STATUS 请求状态信息
 - 0x06 : PING 测试连接
 */

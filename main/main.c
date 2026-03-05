@@ -9,12 +9,12 @@
 #include <string.h>
 
 #include "bsp.h"
-#include "flashstorage.h"
-#include "gps_module.h"
-#include "typedefs.h"
 #include "driver/gpio.h"
 #include "driver/uart.h"
 #include "esp_timer.h"
+#include "flashstorage.h"
+#include "gps_module.h"
+#include "typedefs.h"
 
 static const char *TAG = "MainModule";
 
@@ -37,20 +37,20 @@ extern esp_err_t InitDataPeripheral(void);
 extern void RunDataPeripheral(void);
 
 // 内部操作码（与 BSP/dataprph.c 一致）
-#define OPCODE_TRIGGER   0xA0
-#define OPCODE_PPS       0xA1
+#define OPCODE_TRIGGER 0xA0
+#define OPCODE_PPS 0xA1
 #define OPCODE_TMP_ALERT 0xA2
-#define OPCODE_GPS       0xA3
+#define OPCODE_GPS 0xA3
 
 // 硬件引脚定义
-#define PIN_SIGNAL      4   // ADC 信号输入
-#define PIN_TMP_ALERT   5   // TMP112 温度报警
-#define PIN_CATHODE_MON 6   // SiPM 阴极电压监测
-#define PIN_MON         7   // SiPM 电流监测
-#define PIN_CHARGEIN    8   // 充电状态检测
-#define PIN_RESTART     9   // 复位输出
-#define PIN_TRIGGER     10  // μ子比较器触发输入
-#define PIN_PPS         11  // GPS PPS 秒脉冲输入
+#define PIN_SIGNAL 4	  // ADC 信号输入
+#define PIN_TMP_ALERT 5	  // TMP112 温度报警
+#define PIN_CATHODE_MON 6 // SiPM 阴极电压监测
+#define PIN_MON 7		  // SiPM 电流监测
+#define PIN_CHARGEIN 8	  // 充电状态检测
+#define PIN_RESTART 9	  // 复位输出
+#define PIN_TRIGGER 10	  // μ子比较器触发输入
+#define PIN_PPS 11		  // GPS PPS 秒脉冲输入
 
 // Flash 队列长度在 config.h 中定义（FLASH_QUEUE_SIZE）
 
@@ -194,7 +194,8 @@ static void BlueToothTxTask(void *pvParameters) {
 	}
 }
 
-// 蓝牙主机任务由 nimble_port_freertos_init() 在 InitBlueTooth() 中自动创建，无需手动创建
+// 蓝牙主机任务由 nimble_port_freertos_init() 在 InitBlueTooth()
+// 中自动创建，无需手动创建
 
 /* ================= 初始化函数 ================= */
 
@@ -252,7 +253,8 @@ void AppSetup(void) {
 	gps_start();
 	ESP_LOGI(TAG, "GPS module started");
 
-	// NimBLE 主机任务已由 InitBlueTooth() → nimble_port_freertos_init() 自动创建
+	// NimBLE 主机任务已由 InitBlueTooth() → nimble_port_freertos_init()
+	// 自动创建
 	ESP_LOGI(TAG, "BLE host task started by nimble_port_freertos_init");
 
 	xTaskCreate(CommandHandlerTask, "CommandHandlerTask",

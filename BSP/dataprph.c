@@ -20,9 +20,9 @@ static const char *TAG = "DataPeripheral";
 #define ADC_ATTEN ADC_ATTEN_DB_12
 #define ADC_WIDTH_BITS ADC_WIDTH_BIT_12
 
-static const adc_channel_t ADC_CHANNEL_SIGNAL = ADC_CHANNEL_3;		 // IO4
+static const adc_channel_t ADC_CHANNEL_SIGNAL = ADC_CHANNEL_3;		// IO4
 static const adc_channel_t ADC_CHANNEL_CATHODE_MON = ADC_CHANNEL_5; // IO6
-static const adc_channel_t ADC_CHANNEL_MON = ADC_CHANNEL_6;		 // IO7
+static const adc_channel_t ADC_CHANNEL_MON = ADC_CHANNEL_6;			// IO7
 
 // μ子信号判断阈值（可在 sdkconfig 或 CMake 中覆盖）
 #ifndef SIPM_THRESHOLD_RAW
@@ -100,10 +100,9 @@ static void UpdateLocalGPSData(void) {
 		s_local_gps_long = lon;
 
 		// UTC 时间编码为当天秒数
-		s_local_gps_utc =
-			(uint32_t)current_gps_hex_data.hour * 3600U +
-			(uint32_t)current_gps_hex_data.minute * 60U +
-			(uint32_t)current_gps_hex_data.second;
+		s_local_gps_utc = (uint32_t)current_gps_hex_data.hour * 3600U +
+						  (uint32_t)current_gps_hex_data.minute * 60U +
+						  (uint32_t)current_gps_hex_data.second;
 
 		xSemaphoreGive(gps_hex_data_mutex);
 	}
@@ -161,7 +160,8 @@ static void timeline_send_now(void) {
 	if (xQueueSend(TxQueue, &tx, pdMS_TO_TICKS(50)) != pdTRUE)
 		ESP_LOGW(TAG, "Timeline packet dropped (TxQueue full)");
 	else
-		ESP_LOGI(TAG, "Timeline packet queued, PkgCnt=%u", (unsigned)pkg.PkgCnt);
+		ESP_LOGI(TAG, "Timeline packet queued, PkgCnt=%u",
+				 (unsigned)pkg.PkgCnt);
 
 	// 写入 Flash 存储队列
 	if (xQueueSend(FlashQueue, &tx, pdMS_TO_TICKS(50)) != pdTRUE)
@@ -187,8 +187,7 @@ static void flush_muon_pkg_if_any(void) {
 	s_muon_pkg.tail[1] = 0xEE;
 	s_muon_pkg.tail[2] = 0xFF;
 
-	s_muon_pkg.crc =
-		CalcCRC((uint8_t *)&s_muon_pkg, sizeof(MuonDataPkg_t) - 2);
+	s_muon_pkg.crc = CalcCRC((uint8_t *)&s_muon_pkg, sizeof(MuonDataPkg_t) - 2);
 
 	TxPkg_t tx;
 	memset(&tx, 0, sizeof(tx));
@@ -300,8 +299,8 @@ void RunDataPeripheral(void) {
 			int raw_cath = adc1_get_raw(ADC_CHANNEL_CATHODE_MON);
 			int raw_mon = adc1_get_raw(ADC_CHANNEL_MON);
 
-			ESP_LOGD(TAG, "Trigger received. sig=%d cath=%d mon=%d",
-					 raw_signal, raw_cath, raw_mon);
+			ESP_LOGD(TAG, "Trigger received. sig=%d cath=%d mon=%d", raw_signal,
+					 raw_cath, raw_mon);
 
 			if ((uint32_t)raw_signal >= SIPM_THRESHOLD_RAW) {
 				MuonData_t ev;
