@@ -36,24 +36,6 @@ QueueHandle_t FlashQueue;
 extern esp_err_t InitDataPeripheral(void);
 extern void RunDataPeripheral(void);
 
-// 内部操作码（与 BSP/dataprph.c 一致）
-#define OPCODE_TRIGGER   0xA0
-#define OPCODE_PPS       0xA1
-#define OPCODE_TMP_ALERT 0xA2
-#define OPCODE_GPS       0xA3
-
-// 硬件引脚定义
-#define PIN_SIGNAL      4   // ADC 信号输入
-#define PIN_TMP_ALERT   5   // TMP112 温度报警
-#define PIN_CATHODE_MON 6   // SiPM 阴极电压监测
-#define PIN_MON         7   // SiPM 电流监测
-#define PIN_CHARGEIN    8   // 充电状态检测
-#define PIN_RESTART     9   // 复位输出
-#define PIN_TRIGGER     10  // μ子比较器触发输入
-#define PIN_PPS         11  // GPS PPS 秒脉冲输入
-
-// Flash 队列长度在 config.h 中定义（FLASH_QUEUE_SIZE）
-
 // 函数声明
 static void PPSIntSetup(void);
 static void MuonInttSetup(void);

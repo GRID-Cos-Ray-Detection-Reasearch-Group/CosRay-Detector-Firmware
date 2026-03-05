@@ -37,11 +37,7 @@ static const adc_channel_t ADC_CHANNEL_MON = ADC_CHANNEL_6;		 // IO7
 #define MUON_PKG_MAX_EVENTS 35
 #endif
 
-// 内部操作码（与 main.c 中保持一致）
-#define OPCODE_TRIGGER 0xA0
-#define OPCODE_PPS 0xA1
-#define OPCODE_TMP_ALERT 0xA2
-#define OPCODE_GPS 0xA3
+// 内部操作码从 config.h 引入，不在此重复定义
 
 // 外部队列
 extern QueueHandle_t DataQueue;
