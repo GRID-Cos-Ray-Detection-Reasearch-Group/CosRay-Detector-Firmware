@@ -3,6 +3,8 @@
 
 #include "config.h"
 #include <stdio.h>
+#include <stdint.h>
+#include <stddef.h>
 
 uint16_t CalcCRC(const uint8_t *data, size_t length);
 
