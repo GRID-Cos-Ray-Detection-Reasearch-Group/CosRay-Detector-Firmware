@@ -132,12 +132,14 @@ static void timeline_send_now(void) {
 	memcpy(tx.data, &pkg, sizeof(pkg));
 	tx.length = DATA_PACKAGE_SIZE;
 
-	// 发送到TxQueue(测试用)
+	/*// 发送到TxQueue(测试用)
 	if (xQueueSend(TxQueue, &tx, pdMS_TO_TICKS(50)) != pdTRUE)
 		ESP_LOGI(TAG, "Timeline packet dropped (TxQueue full)");
 	else
 		ESP_LOGI(TAG, "Timeline packet queued, PkgCnt=%u",
 				 (unsigned)pkg.PkgCnt);
+	*/
+
 	// 写入Flash
 	if (xQueueSend(FlashQueue, &tx, pdMS_TO_TICKS(50)) != pdTRUE)
 		ESP_LOGI(TAG, "Timeline packet dropped (FlashQueue full)");

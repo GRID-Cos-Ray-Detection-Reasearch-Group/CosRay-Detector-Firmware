@@ -7,6 +7,9 @@
 #include "driver/gpio.h"
 #include "driver/spi_master.h"
 #include "esp_rom_sys.h"
+#include "esp_err.h"
+#include "esp_rom_crc.h"  
+#include "sys/param.h"     
 #include <string.h>
 
 static const char *TAG = "FlashStorage";
@@ -14,6 +17,16 @@ static FlashStatus FlashPageToCache(uint32_t page);
 
 spi_device_handle_t flash_spi_handle;
 extern QueueHandle_t FlashQueue;
+FlashGlobalState_t g_flash_state = {
+    .write_page = 0,          // 初始写入页号为0
+    .last_send_pkg = 0,       // 初始数据包索引为0
+    .init_ok = false          // 初始化完成标记默认false
+};
+
+// 累计多个512字节数据包后再写入
+#define FLASH_BATCH_SIZE 4 // 4*512=2048字节（1页）
+static uint8_t batch_buf[FLASH_BATCH_SIZE * DATA_PACKAGE_SIZE] = {0};
+static size_t batch_count = 0;
 
 /* ================= SPI NAND 指令 ================= */
 #define CMD_RESET_ENABLE        0x66
@@ -40,17 +53,6 @@ extern QueueHandle_t FlashQueue;
 #define STATUS_P_FAIL           0x08
 #define STATUS_ECC_MASK         0x30
 
-/* ================= Flash 参数 ================= */
-#define W25N_PAGE_SIZE_MAIN     2048
-#define W25N_PAGE_SIZE_OOB      64
-#define W25N_BLOCK_SIZE_PAGE    128
-
-#define JEDEC_MFG_ID            0xEF
-#define JEDEC_DEV_MSB           0xAE
-#define JEDEC_DEV_LSB           0x21
-//W25N0xAA22  AE21 
-
-#define W25N_BAD_BLOCK_MARK     0x00
 
 /* ========================================================= */
 
@@ -329,22 +331,43 @@ FlashStatus FlashReadOOB(uint32_t page, uint8_t *oob_buf, uint32_t len)
 
     return FLASH_OK;
 }
-
-static FlashStatus FlashCheckBadBlock(uint32_t page)
-{
+static FlashStatus FlashCheckBadBlock(uint32_t page) {
     uint32_t block = page / W25N_BLOCK_SIZE_PAGE;
     uint32_t page0 = block * W25N_BLOCK_SIZE_PAGE;
     uint32_t page1 = page0 + 1;
 
     uint8_t oob[W25N_PAGE_SIZE_OOB];
 
-    if (FlashReadOOB(page0, oob, W25N_PAGE_SIZE_OOB) != FLASH_OK)
-        return FLASH_OP_ERROR;
-    if (oob[0] != 0xFF ) return FLASH_BAD_BLOCK;
+    // 第一步：读取Block第0页OOB（读取失败则先擦除）
+    if (FlashReadOOB(page0, oob, 1) != FLASH_OK) {
+        ESP_LOGW(TAG, "Read OOB failed, erase block first (block=%" PRIu32 ")", block);
+        FlashEraseBlock(page0); // 先擦除块
+        if (FlashReadOOB(page0, oob, 1) != FLASH_OK) {
+            ESP_LOGE(TAG, "Bad block check failed (page0=%" PRIu32 ")", page0);
+            return FLASH_OP_ERROR;
+        }
+    }
 
-    if (FlashReadOOB(page1, oob, W25N_PAGE_SIZE_OOB) != FLASH_OK)
-        return FLASH_OP_ERROR;
-    if (oob[0] != 0xFF ) return FLASH_BAD_BLOCK;
+    // 正确规则：仅当OOB[0] = 0x00 时才是坏块（0xFF是正常，其他值先擦除）
+    if (oob[0] == W25N_BAD_BLOCK_MARK) { // 0x00 = 坏块标记
+        ESP_LOGW(TAG, "Bad block detected (block=%" PRIu32 ")", block);
+        return FLASH_BAD_BLOCK;
+    }
+
+    // 非0xFF/非0x00：擦除后再验证
+    if (oob[0] != 0xFF) {
+        FlashEraseBlock(page0);
+        if (FlashReadOOB(page0, oob, 1) != FLASH_OK || oob[0] == W25N_BAD_BLOCK_MARK) {
+            ESP_LOGW(TAG, "Bad block after erase (block=%" PRIu32 ")", block);
+            return FLASH_BAD_BLOCK;
+        }
+    }
+
+    // 校验第1页（可选，原厂仅要求校验第0页）
+    if (FlashReadOOB(page1, oob, 1) == FLASH_OK && oob[0] == W25N_BAD_BLOCK_MARK) {
+        ESP_LOGW(TAG, "Bad block detected (page1=%" PRIu32 ")", page1);
+        return FLASH_BAD_BLOCK;
+    }
 
     return FLASH_OK;
 }
@@ -441,20 +464,27 @@ FlashStatus FlashEraseBlock(uint32_t page)
     return FLASH_OK;
 }
 
-FlashStatus FlashWrite(uint32_t page, const uint8_t *buf, uint32_t len)
-{
+FlashStatus FlashWrite(uint32_t page, const uint8_t *buf, uint32_t len) {
     if (!buf || len == 0 || len > W25N_PAGE_SIZE_MAIN)
         return FLASH_INVALID_PARAM;
 
-    FlashStatus ret = FlashCheckBadBlock(page);
-    if (ret != FLASH_OK) return ret;
+    uint32_t block_start_page = (page / W25N_BLOCK_SIZE_PAGE) * W25N_BLOCK_SIZE_PAGE;
 
-    /* 仅当是块首地址才擦除 */
-    if (page % W25N_BLOCK_SIZE_PAGE == 0) {
-        ret = FlashEraseBlock(page);
-        if (ret != FLASH_OK) return ret;
+    // 第一步：检测坏块（检测时会自动擦除非坏块）
+    FlashStatus ret = FlashCheckBadBlock(page);
+    if (ret != FLASH_OK) {
+        ESP_LOGE(TAG, "Write failed: bad block (page=%" PRIu32 ")", page);
+        return ret;
     }
 
+    // 第二步：强制擦除块（无论是否块首地址）
+    ret = FlashEraseBlock(block_start_page);
+    if (ret != FLASH_OK) {
+        ESP_LOGE(TAG, "Erase block failed (page=%" PRIu32 ")", block_start_page);
+        return ret;
+    }
+
+    // 后续逻辑不变
     ret = FlashWriteEnable();
     if (ret != FLASH_OK) return ret;
 
@@ -500,69 +530,176 @@ FlashStatus FlashStorageInit(void)
 }
 
 
-void AppDataStoreTask(void *arg)
-{
+// Flash数据存储任务（核心修复：坏块处理+批量写入逻辑）
+void AppDataStoreTask(void *pvParameters) {
+    ESP_LOGI(TAG, "FlashStoreTask started");
+
+    // 初始化Flash
     FlashStatus ret = FlashStorageInit();
     if (ret != FLASH_OK) {
-        ESP_LOGE(TAG, "FlashStorageInit failed, task exit");
+        ESP_LOGE(TAG, "Flash init failed (ret: %d)", ret);
         vTaskDelete(NULL);
         return;
     }
 
     TxPkg_t pkg;
-    static uint8_t page_buf[W25N_PAGE_SIZE_MAIN] = {0};
-    static size_t offset = 0;
-    static uint32_t current_page = 0;
-
-    ESP_LOGI(TAG, "AppDataStoreTask start running");
+    // 重置批量缓存状态（避免脏数据）
+    memset(batch_buf, 0, sizeof(batch_buf));
+    batch_count = 0;
 
     while (1) {
-        while (FlashQueue == NULL) {
-        ESP_LOGW(TAG, "Waiting FlashQueue...");
-        vTaskDelay(pdMS_TO_TICKS(10));
-        }
-
         if (xQueueReceive(FlashQueue, &pkg, portMAX_DELAY)) {
-            
-
-            if (pkg.length == 0 || pkg.length > (W25N_PAGE_SIZE_MAIN - offset)) {
-                ESP_LOGE(TAG,
-                         "Invalid pkg data (length=%" PRIu32 ", offset=%" PRIu32 ")",
-                         pkg.length, (uint32_t)offset);
+            // 校验数据包长度（严格限制512字节）
+            if (pkg.length == 0 || pkg.length > DATA_PACKAGE_SIZE) {
+                ESP_LOGE(TAG, "Invalid pkg length (size=%zu), must be 1~512 bytes", pkg.length);
                 continue;
             }
 
-            memcpy(page_buf + offset, pkg.data, pkg.length);
-            offset += pkg.length;
+            // 填充数据包到批量缓冲区（不足512字节的补0）
+            uint8_t pkg_full[DATA_PACKAGE_SIZE] = {0};
+            memcpy(pkg_full, pkg.data, pkg.length);
+            memcpy(&batch_buf[batch_count * DATA_PACKAGE_SIZE], pkg_full, DATA_PACKAGE_SIZE);
+            batch_count++;
 
-            ESP_LOGD(TAG,
-                     "Received data (len=%" PRIu32 ", current offset=%" PRIu32 ")",
-                     pkg.length, (uint32_t)offset);
-
-            if (offset >= W25N_PAGE_SIZE_MAIN) {
-
-                ret = FlashWrite(current_page, page_buf, W25N_PAGE_SIZE_MAIN);
-
-                if (ret == FLASH_BAD_BLOCK) {
-                    current_page += W25N_BLOCK_SIZE_PAGE;
-                    memset(page_buf, 0, W25N_PAGE_SIZE_MAIN);
-                    offset = 0;
+            // 批量缓冲区满（4个512字节包=2048字节，1个Flash页），执行写入
+            if (batch_count >= FLASH_BATCH_SIZE) {
+                // 跳过超出Flash总页数的写入（防止越界）
+                if (g_flash_state.write_page >= W25N_TOTAL_PAGES) {
+                    ESP_LOGE(TAG, "Flash storage full (total pages=%" PRIu32 ")", W25N_TOTAL_PAGES);
+                    batch_count = 0;
+                    memset(batch_buf, 0, sizeof(batch_buf));
                     continue;
                 }
 
-                else if (ret != FLASH_OK) {
-                    ESP_LOGE(TAG,
-                            "FlashWrite failed (page=%" PRIu32 ", err=%" PRIu32 ")",
-                            current_page, (uint32_t)ret);
-                    current_page++;
+                // 执行Flash页写入
+                ret = FlashWrite(g_flash_state.write_page, batch_buf, W25N_PAGE_SIZE_MAIN);
+                if (ret == FLASH_OK) {
+                    ESP_LOGI(TAG, "Batch write success (4x512) to page %" PRIu32, g_flash_state.write_page);
+                    g_flash_state.write_page++; // 正常写入，页号+1
+                    batch_count = 0;
+                    memset(batch_buf, 0, sizeof(batch_buf));
+                } else {
+                    ESP_LOGE(TAG, "Batch write failed (page=%" PRIu32 ", ret=%d)", g_flash_state.write_page, ret);
+                    // 坏块处理：跳到下一个块的起始页（避免重复检测同一坏块）
+                    if (ret == FLASH_BAD_BLOCK) {
+                        uint32_t current_block = g_flash_state.write_page / W25N_BLOCK_SIZE_PAGE;
+                        g_flash_state.write_page = (current_block + 1) * W25N_BLOCK_SIZE_PAGE;
+                        ESP_LOGW(TAG, "Skip bad block %" PRIu32 ", next page: %" PRIu32, 
+                                 current_block, g_flash_state.write_page);
+                    }
+                    // 重置批量缓冲区（无论是否坏块，都清空缓存）
+                    batch_count = 0;
+                    memset(batch_buf, 0, sizeof(batch_buf));
                 }
-                else {
-                    current_page++;
-                }
-
-                memset(page_buf, 0, W25N_PAGE_SIZE_MAIN);
-                offset = 0;
             }
+
+            ESP_LOGD(TAG, "Cached pkg %zu (total cached: %zu bytes / %zu pages)", 
+                     batch_count, batch_count * DATA_PACKAGE_SIZE, 
+                     (batch_count * DATA_PACKAGE_SIZE + W25N_PAGE_SIZE_MAIN - 1) / W25N_PAGE_SIZE_MAIN);
         }
     }
+
+    vTaskDelete(NULL);
 }
+
+// 多页读取函数（修复：边界检查+内存安全）
+FlashStatus FlashReadMultiPage(uint32_t start_page, uint32_t page_count, uint8_t *buf, uint32_t *read_len) {
+    // 入参合法性校验
+    if (!buf || !read_len || page_count == 0) {
+        ESP_LOGE(TAG, "Invalid params for multi-page read (buf=%p, len=%p, count=%" PRIu32 ")", 
+                 buf, read_len, page_count);
+        return FLASH_INVALID_PARAM;
+    }
+    // 页号越界检查
+    if (start_page >= W25N_TOTAL_PAGES) {
+        ESP_LOGE(TAG, "Start page %" PRIu32 " out of range (max=%" PRIu32 ")", 
+                 start_page, W25N_TOTAL_PAGES - 1);
+        return FLASH_INVALID_PARAM;
+    }
+    // 修正读取页数（避免超出Flash总页数）
+    uint32_t actual_page_count = MIN(page_count, W25N_TOTAL_PAGES - start_page);
+    if (actual_page_count != page_count) {
+        ESP_LOGW(TAG, "Read page count truncated (requested=%" PRIu32 ", actual=%" PRIu32 ")", 
+                 page_count, actual_page_count);
+    }
+
+    *read_len = 0;
+    uint8_t page_buf[W25N_PAGE_SIZE_MAIN]; // 栈缓冲区（避免堆分配开销）
+
+    for (uint32_t i = 0; i < actual_page_count; i++) {
+        uint32_t current_page = start_page + i;
+        // 读取单页数据
+        FlashStatus ret = FlashRead(current_page, page_buf, W25N_PAGE_SIZE_MAIN);
+        if (ret != FLASH_OK) {
+            ESP_LOGE(TAG, "Read page %" PRIu32 " failed (ret: %d)", current_page, ret);
+            return ret;
+        }
+        // 拷贝到输出缓冲区（内存安全：避免越界）
+        memcpy(buf + i * W25N_PAGE_SIZE_MAIN, page_buf, W25N_PAGE_SIZE_MAIN);
+        *read_len += W25N_PAGE_SIZE_MAIN;
+    }
+
+    ESP_LOGI(TAG, "Multi-page read success: start=%" PRIu32 ", count=%" PRIu32 ", total bytes=%" PRIu32, 
+             start_page, actual_page_count, *read_len);
+    return FLASH_OK;
+}
+
+// 按512字节数据包粒度读取Flash（修复：偏移计算+内存安全）
+FlashStatus FlashReadDataPackages(uint32_t start_pkg_idx, uint32_t pkg_count, uint8_t *out_buf, uint32_t *out_len) {
+    // 入参合法性校验
+    if (!out_buf || !out_len || pkg_count == 0) {
+        ESP_LOGE(TAG, "Invalid params for pkg read (buf=%p, len=%p, count=%" PRIu32 ")", 
+                 out_buf, out_len, pkg_count);
+        return FLASH_INVALID_PARAM;
+    }
+
+    *out_len = 0;
+    uint32_t pkg_per_page = W25N_PAGE_SIZE_MAIN / DATA_PACKAGE_SIZE; // 每页4个数据包
+    uint32_t total_needed_bytes = pkg_count * DATA_PACKAGE_SIZE;
+
+    // 计算起始页和页内偏移（数据包粒度）
+    uint32_t start_page = start_pkg_idx / pkg_per_page;
+    uint32_t page_offset = (start_pkg_idx % pkg_per_page) * DATA_PACKAGE_SIZE;
+    // 计算需要读取的页数（向上取整）
+    uint32_t need_page_count = (total_needed_bytes + page_offset + W25N_PAGE_SIZE_MAIN - 1) / W25N_PAGE_SIZE_MAIN;
+
+    // 堆分配临时缓冲区（自动适配读取页数）
+    uint32_t temp_buf_size = need_page_count * W25N_PAGE_SIZE_MAIN;
+    uint8_t *page_buf = (uint8_t *)heap_caps_malloc(temp_buf_size, MALLOC_CAP_DEFAULT);
+    if (!page_buf) {
+        ESP_LOGE(TAG, "Malloc failed for pkg read (need %" PRIu32 " bytes)", temp_buf_size);
+        return FLASH_OP_ERROR;
+    }
+
+    // 读取多页数据到临时缓冲区
+    uint32_t read_bytes = 0;
+    FlashStatus ret = FlashReadMultiPage(start_page, need_page_count, page_buf, &read_bytes);
+    if (ret != FLASH_OK) {
+        free(page_buf);
+        ESP_LOGE(TAG, "Multi-page read failed (ret: %d)", ret);
+        return ret;
+    }
+
+    // 提取目标数据包（跳过页内偏移，避免内存越界）
+    uint32_t copy_len = MIN(total_needed_bytes, read_bytes - page_offset);
+    memcpy(out_buf, page_buf + page_offset, copy_len);
+    *out_len = copy_len;
+
+    // 释放临时缓冲区
+    free(page_buf);
+
+    // 校验读取结果（是否满足需求）
+    if (*out_len != total_needed_bytes) {
+        ESP_LOGW(TAG, "Pkg read incomplete (requested=%" PRIu32 " bytes, actual=%" PRIu32 ")", 
+                 total_needed_bytes, *out_len);
+    } else {
+        ESP_LOGI(TAG, "Pkg read success: start=%" PRIu32 ", count=%" PRIu32 ", total bytes=%" PRIu32, 
+                 start_pkg_idx, pkg_count, *out_len);
+    }
+
+    return FLASH_OK;
+}
+
+
+
+

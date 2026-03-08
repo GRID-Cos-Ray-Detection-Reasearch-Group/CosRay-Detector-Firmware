@@ -1,6 +1,9 @@
 #ifndef BSP_H
 #define BSP_H
 
+#include <stdint.h>
+#include <stddef.h>
+#include "esp_err.h"
 #include "config.h"
 #include "typedefs.h"
 
@@ -19,9 +22,11 @@ esp_err_t BSPInit(void);
 
 esp_err_t InitBlueTooth(void);
 void RunBlueToothHost(void);
-int SendNotify(uint8_t *buf, size_t len);
+int SendNotify(uint8_t *buf, size_t len, uint8_t global_total, uint8_t global_idx);
+
 
 esp_err_t InitDataPeripheral(void);
 void RunDataPeripheral(void);
 
+esp_err_t SendFlashDataOverBLE(uint32_t start_pkg_idx, uint32_t pkg_count);
 #endif // BSP_H
