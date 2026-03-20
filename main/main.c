@@ -34,6 +34,8 @@ TaskHandle_t bluetoothTxTaskHandle;
 TaskHandle_t commandHandlerTaskHandle;
 TaskHandle_t dataStoreTaskHandle;
 TaskHandle_t telTaskHandle;
+TaskHandle_t dataPeripheralTaskHandle;
+
 
 uint8_t gpsBuffer[256];
 size_t gpsBufferLen = 0;
@@ -45,7 +47,7 @@ QueueHandle_t FlashQueue;
 
 // 外部函数声明
 extern esp_err_t InitDataPeripheral(void);
-extern void RunDataPeripheral(void);
+extern void RunDataPeripheral(void *pvParameters);
 extern esp_err_t SendFlashDataOverBLE(uint32_t start_pkg_idx, uint32_t pkg_count);
 extern FlashGlobalState_t g_flash_state;
 
@@ -172,13 +174,7 @@ void GpsRxIntSetup(void) {
     ESP_LOGI(TAG, "GPSTask created successfully");
 }
 
-// ================= 数据存储任务 =================
-static void AppDataStore(void *pvParameters) {
-    ESP_LOGI(TAG, "DataStoreTask started");
-    RunDataPeripheral();
-    ESP_LOGI(TAG, "DataStoreTask ended");
-    vTaskDelete(NULL);
-}
+
 
 
 // ================= 命令处理任务 =================
@@ -304,7 +300,7 @@ void AppSetup(void) {
         return;
     }
 
-    // 创建任务（使用config.h中的标准化宏）
+    // 创建任务
     xTaskCreate(AppBlueTooth, "BlueToothTask", BLUETOOTH_TASK_STACK_SIZE, NULL,
                 BLUETOOTH_TASK_PRIORITY, &bluetoothTaskHandle);
     ESP_LOGI(TAG, "BlueToothTask created successfully");
@@ -318,15 +314,16 @@ void AppSetup(void) {
                 BLUETOOTH_TX_TASK_STACK_SIZE, NULL, BLUETOOTH_TX_TASK_PRIORITY,
                 &bluetoothTxTaskHandle);
     ESP_LOGI(TAG, "BlueToothTxTask created successfully");
+    
+    xTaskCreate(RunDataPeripheral,"DataPeripheralTask", 
+        DATA_PERIPHERAL_TASK_STACK_SIZE, NULL, DATA_PERIPHERAL_TASK_PRIORITY, &dataPeripheralTaskHandle);
 
-    xTaskCreate(AppDataStore, "DataStoreTask", DATA_STORE_TASK_STACK_SIZE, NULL,
+    xTaskCreate(AppDataStoreTask, "DataStoreTask", DATA_STORE_TASK_STACK_SIZE, NULL,
                 DATA_STORE_TASK_PRIORITY, &dataStoreTaskHandle);
     ESP_LOGI(TAG, "DataStoreTask created successfully");
-    
-    xTaskCreate(AppDataStoreTask, "FlashStoreTask", 
-                4096,  NULL,  4,  NULL);
-    ESP_LOGI(TAG, "FlashStoreTask created");
 }
+
+
 
 // ================= 主函数 =================
 void app_main(void) {

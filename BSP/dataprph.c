@@ -229,7 +229,7 @@ esp_err_t InitDataPeripheral(void) {
 	return ESP_OK;
 }
 
-void RunDataPeripheral(void) {
+void RunDataPeripheral(void *pvParameters) {
 	ESP_LOGI(TAG, "RunDataPeripheral started");
 	Command_t cmd;
 

@@ -14,6 +14,7 @@
 #define DATA_TEL_TASK_PRIORITY        2
 #define COMMAND_HANDLER_TASK_PRIORITY 4
 #define BLUETOOTH_TX_TASK_PRIORITY    5
+#define DATA_PERIPHERAL_TASK_PRIORITY 5
 
 // ================= 任务堆栈大小定义 =================
 #define DATA_PROCESS_TASK_STACK_SIZE    4096
@@ -22,7 +23,7 @@
 #define DATA_TEL_TASK_STACK_SIZE        3072
 #define COMMAND_HANDLER_TASK_STACK_SIZE 4096
 #define BLUETOOTH_TX_TASK_STACK_SIZE    8192
-
+#define DATA_PERIPHERAL_TASK_STACK_SIZE 4096
 // ================= 队列大小配置 =================
 #define COMMAND_QUEUE_SIZE 20
 #define DATA_QUEUE_SIZE    50

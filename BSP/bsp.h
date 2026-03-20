@@ -26,7 +26,7 @@ int SendNotify(uint8_t *buf, size_t len, uint8_t global_total, uint8_t global_id
 
 
 esp_err_t InitDataPeripheral(void);
-void RunDataPeripheral(void);
+void RunDataPeripheral(void *pvParameters);
 
 esp_err_t SendFlashDataOverBLE(uint32_t start_pkg_idx, uint32_t pkg_count);
 #endif // BSP_H

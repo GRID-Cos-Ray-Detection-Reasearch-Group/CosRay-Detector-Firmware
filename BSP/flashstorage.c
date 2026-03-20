@@ -331,41 +331,21 @@ FlashStatus FlashReadOOB(uint32_t page, uint8_t *oob_buf, uint32_t len)
 
     return FLASH_OK;
 }
+
 static FlashStatus FlashCheckBadBlock(uint32_t page) {
     uint32_t block = page / W25N_BLOCK_SIZE_PAGE;
     uint32_t page0 = block * W25N_BLOCK_SIZE_PAGE;
-    uint32_t page1 = page0 + 1;
-
     uint8_t oob[W25N_PAGE_SIZE_OOB];
 
-    // 第一步：读取Block第0页OOB（读取失败则先擦除）
+    // 仅读取，不擦除！擦除会破坏数据
     if (FlashReadOOB(page0, oob, 1) != FLASH_OK) {
-        ESP_LOGW(TAG, "Read OOB failed, erase block first (block=%" PRIu32 ")", block);
-        FlashEraseBlock(page0); // 先擦除块
-        if (FlashReadOOB(page0, oob, 1) != FLASH_OK) {
-            ESP_LOGE(TAG, "Bad block check failed (page0=%" PRIu32 ")", page0);
-            return FLASH_OP_ERROR;
-        }
+        ESP_LOGE(TAG, "Read OOB failed (page0=%" PRIu32 ")", page0);
+        return FLASH_OP_ERROR;
     }
 
-    // 正确规则：仅当OOB[0] = 0x00 时才是坏块（0xFF是正常，其他值先擦除）
-    if (oob[0] == W25N_BAD_BLOCK_MARK) { // 0x00 = 坏块标记
+    // 标准坏块标记：OOB[0] == 0x00 为坏块
+    if (oob[0] == W25N_BAD_BLOCK_MARK) {
         ESP_LOGW(TAG, "Bad block detected (block=%" PRIu32 ")", block);
-        return FLASH_BAD_BLOCK;
-    }
-
-    // 非0xFF/非0x00：擦除后再验证
-    if (oob[0] != 0xFF) {
-        FlashEraseBlock(page0);
-        if (FlashReadOOB(page0, oob, 1) != FLASH_OK || oob[0] == W25N_BAD_BLOCK_MARK) {
-            ESP_LOGW(TAG, "Bad block after erase (block=%" PRIu32 ")", block);
-            return FLASH_BAD_BLOCK;
-        }
-    }
-
-    // 校验第1页（可选，原厂仅要求校验第0页）
-    if (FlashReadOOB(page1, oob, 1) == FLASH_OK && oob[0] == W25N_BAD_BLOCK_MARK) {
-        ESP_LOGW(TAG, "Bad block detected (page1=%" PRIu32 ")", page1);
         return FLASH_BAD_BLOCK;
     }
 
@@ -464,27 +444,34 @@ FlashStatus FlashEraseBlock(uint32_t page)
     return FLASH_OK;
 }
 
+
 FlashStatus FlashWrite(uint32_t page, const uint8_t *buf, uint32_t len) {
     if (!buf || len == 0 || len > W25N_PAGE_SIZE_MAIN)
         return FLASH_INVALID_PARAM;
 
+    // 1. 仅块起始页才执行擦除（核心修复：不再每次写都擦除）
     uint32_t block_start_page = (page / W25N_BLOCK_SIZE_PAGE) * W25N_BLOCK_SIZE_PAGE;
+    static uint32_t last_erased_block = 0xFFFFFFFF;
 
-    // 第一步：检测坏块（检测时会自动擦除非坏块）
+    // 2. 坏块检测（仅首次访问块时检测一次）
     FlashStatus ret = FlashCheckBadBlock(page);
     if (ret != FLASH_OK) {
         ESP_LOGE(TAG, "Write failed: bad block (page=%" PRIu32 ")", page);
         return ret;
     }
 
-    // 第二步：强制擦除块（无论是否块首地址）
-    ret = FlashEraseBlock(block_start_page);
-    if (ret != FLASH_OK) {
-        ESP_LOGE(TAG, "Erase block failed (page=%" PRIu32 ")", block_start_page);
-        return ret;
+    // 3. 仅当进入新块时，擦除一次（关键！避免覆盖旧数据）
+    if (block_start_page != last_erased_block) {
+        ret = FlashEraseBlock(block_start_page);
+        if (ret != FLASH_OK) {
+            ESP_LOGE(TAG, "Erase block failed (page=%" PRIu32 ")", block_start_page);
+            return ret;
+        }
+        last_erased_block = block_start_page;
+        ESP_LOGI(TAG, "Erased new block: %" PRIu32, block_start_page);
     }
 
-    // 后续逻辑不变
+    // 4. 正常页编程（无擦除，直接写入）
     ret = FlashWriteEnable();
     if (ret != FLASH_OK) return ret;
 
