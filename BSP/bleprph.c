@@ -166,22 +166,28 @@ esp_err_t InitBlueTooth(void) {
 static void AutoSendFlashDataTask(void *arg);
 
 static int GAPEventCallback(struct ble_gap_event *Event, void *Arg) {
+    // 【新增】任务句柄，用来判断任务是否存在
+    static TaskHandle_t auto_send_task_handle = NULL;
+
     switch (Event->type) {
         case BLE_GAP_EVENT_CONNECT:
             ESP_LOGI(TAG, "Device connected");
             ConnHandle = Event->connect.conn_handle;
             BLEConnected = true;
 
-            BaseType_t task_ret = xTaskCreate(
-                AutoSendFlashDataTask,
-                "AutoSendFlashData",
-                8192,
-                NULL,
-                5,
-                NULL
-            );
-            if (task_ret != pdPASS) {
-                ESP_LOGE(TAG, "Failed to create auto send task");
+            // 【修复】只创建一次任务
+            if (auto_send_task_handle == NULL) {
+                BaseType_t task_ret = xTaskCreate(
+                    AutoSendFlashDataTask,
+                    "AutoSendFlashData",
+                    8192,
+                    NULL,
+                    5,
+                    &auto_send_task_handle  // 保存句柄
+                );
+                if (task_ret != pdPASS) {
+                    ESP_LOGE(TAG, "Failed to create auto send task");
+                }
             }
             break;
 
@@ -189,8 +195,19 @@ static int GAPEventCallback(struct ble_gap_event *Event, void *Arg) {
             ESP_LOGI(TAG, "Device disconnected");
             ConnHandle = BLE_HS_CONN_HANDLE_NONE;
             BLEConnected = false;
-			ESP_LOGI(TAG, "Disconnected, last sent pkg remains: %u", g_flash_state.last_send_pkg);
-    
+            ESP_LOGI(TAG, "Disconnected, last sent pkg remains: %" PRIu32, g_flash_state.last_send_pkg);
+
+            // 【核心修复】断开时删除任务，防止死循环
+            if (auto_send_task_handle != NULL) {
+                vTaskDelete(auto_send_task_handle);
+                auto_send_task_handle = NULL;
+            }
+
+            // 【核心修复】强制释放锁，解决 mutex timeout
+            if (ble_tx_mutex != NULL) {
+                xSemaphoreGive(ble_tx_mutex);
+            }
+
             Command_t stop;
             stop.data[0] = STOP;
             if (CommandQueue != NULL) {
