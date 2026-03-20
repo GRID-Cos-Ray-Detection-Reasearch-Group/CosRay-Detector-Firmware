@@ -12,12 +12,16 @@
 #define BLUETOOTH_TASK_PRIORITY 4
 #define DATA_STORE_TASK_PRIORITY 3
 #define DATA_TEL_TASK_PRIORITY 2
+#define COMMAND_HANDLER_TASK_PRIORITY 5 // TODO: 设置合适的优先级
+#define BLUETOOTH_TX_TASK_PRIORITY 4	// TODO: 设置合适的优先级
 
 // 任务堆栈大小定义
-#define DATA_PROCESS_TASK_STACK_SIZE 4096
-#define BLUETOOTH_TASK_STACK_SIZE 4096
-#define DATA_STORE_TASK_STACK_SIZE 3072
-#define DATA_TEL_TASK_STACK_SIZE 3072
+#define DATA_PROCESS_TASK_STACK_SIZE 8192
+#define BLUETOOTH_TASK_STACK_SIZE 8192
+#define DATA_STORE_TASK_STACK_SIZE 8192
+#define DATA_TEL_TASK_STACK_SIZE 8192
+#define COMMAND_HANDLER_TASK_STACK_SIZE 8192 // TODO: 设置合适的堆栈大小
+#define BLUETOOTH_TX_TASK_STACK_SIZE 8192	 // TODO: 设置合适的堆栈大小
 
 // 数据类型定义
 #define DATA_TYPE_GPS 1
@@ -30,13 +34,18 @@ extern TaskHandle_t dataProcessTaskHandle;
 extern TaskHandle_t bluetoothTaskHandle;
 extern TaskHandle_t dataStoreTaskHandle;
 extern TaskHandle_t telTaskHandle;
+extern TaskHandle_t commandHandlerTaskHandle;
 
-// 缓冲区定义
-extern uint8_t gpsBuffer[256];
+// 缓冲区大小定义
 
-// 数据储存结构体
-typedef struct {
+// 队列长度定义
+#define COMMAND_QUEUE_SIZE 20    
+#define DATA_QUEUE_SIZE 50       
+#define TX_QUEUE_SIZE 30         
+#define FLASH_QUEUE_SIZE 100     
 
-} data_store_t;
+// 其他配置参数
+#define CMD_LENGTH 8
+#define DATA_PACKAGE_SIZE 512
 
 #endif // CONFIG_H
