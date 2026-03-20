@@ -1,6 +1,6 @@
 #include <stdio.h>
 #include <string.h>
-#include <inttypes.h>   // 🔥 修复：添加 PRIu32 支持
+#include <inttypes.h>  
 
 #include "esp_log.h"
 #include "host/ble_gap.h"
