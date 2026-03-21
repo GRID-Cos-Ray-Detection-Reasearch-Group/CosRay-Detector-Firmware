@@ -22,7 +22,7 @@ esp_err_t BSPInit(void);
 
 esp_err_t InitBlueTooth(void);
 void RunBlueToothHost(void);
-int SendNotify(uint8_t *buf, size_t len, uint8_t global_total, uint8_t global_idx);
+int SendNotify(uint8_t *buf, size_t len, uint16_t global_total, uint16_t global_idx);
 
 
 esp_err_t InitDataPeripheral(void);

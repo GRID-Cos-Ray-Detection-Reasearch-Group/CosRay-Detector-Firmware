@@ -24,17 +24,17 @@
 #include "config.h"
 
 // BLE 发送队列（环形缓冲）
-#define BLE_TX_QUEUE_SIZE  60   // 可缓存60包
+#define BLE_TX_QUEUE_SIZE  64   
 static QueueHandle_t ble_tx_queue = NULL;
 static SemaphoreHandle_t ble_tx_mutex = NULL;
 
 // BLE分包配置
 #define BLE_PACKET_MAX_SIZE         22
-#define BLE_PACKET_GLOBAL_HEADER    2
+#define BLE_PACKET_GLOBAL_HEADER    4
 #define BLE_PACKET_LOCAL_HEADER     2
 #define BLE_PACKET_HEADER_TOTAL     (BLE_PACKET_GLOBAL_HEADER + BLE_PACKET_LOCAL_HEADER)
 #define BLE_PACKET_DATA_SIZE        (BLE_PACKET_MAX_SIZE - BLE_PACKET_HEADER_TOTAL)
-#define LOCAL_PACKETS_PER_GLOBAL    29
+#define LOCAL_PACKETS_PER_GLOBAL    32
 #define GLOBAL_DATA_LEN             512
 
 static const char *TAG = "NimBLEModule";
@@ -303,7 +303,8 @@ static int GATTDataCharAccessCallback(uint16_t ConnHandle, uint16_t attr_handle,
 	return BLE_ATT_ERR_READ_NOT_PERMITTED;
 }
 
-int SendNotify(uint8_t *buf, size_t len, uint8_t global_total, uint8_t global_idx) {
+int SendNotify(uint8_t *buf, size_t len, uint16_t global_total, uint16_t global_idx)
+{
     if (!BLEConnected || ConnHandle == BLE_HS_CONN_HANDLE_NONE) {
         return 0;
     }
@@ -313,16 +314,24 @@ int SendNotify(uint8_t *buf, size_t len, uint8_t global_total, uint8_t global_id
 
     for (int i = 0; i < LOCAL_PACKETS_PER_GLOBAL; i++) {
         uint8_t pkt[BLE_PACKET_MAX_SIZE] = {0};
-        pkt[0] = global_total;
-        pkt[1] = global_idx;
-        pkt[2] = LOCAL_PACKETS_PER_GLOBAL;
-        pkt[3] = i + 1;
-        memcpy(&pkt[4], &frame_buf[i * BLE_PACKET_DATA_SIZE], BLE_PACKET_DATA_SIZE);
+
+        // 前4字节：[global_total(2B)][global_idx(2B)]
+        pkt[0] = (global_total >> 8) & 0xFF;
+        pkt[1] = global_total & 0xFF;
+        pkt[2] = (global_idx >> 8) & 0xFF;
+        pkt[3] = global_idx & 0xFF;
+
+        pkt[4] = LOCAL_PACKETS_PER_GLOBAL;
+        pkt[5] = i + 1;
+
+        memcpy(&pkt[6], &frame_buf[i * BLE_PACKET_DATA_SIZE], BLE_PACKET_DATA_SIZE);
 
         xQueueSend(ble_tx_queue, pkt, 0);
     }
     return 0;
 }
+
+
 
 static void ble_tx_task(void *arg)
 {
