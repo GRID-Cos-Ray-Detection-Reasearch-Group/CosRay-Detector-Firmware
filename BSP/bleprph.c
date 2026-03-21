@@ -24,7 +24,7 @@
 #include "config.h"
 
 // BLE 发送队列（环形缓冲）
-#define BLE_TX_QUEUE_SIZE  30   // 可缓存30包
+#define BLE_TX_QUEUE_SIZE  60   // 可缓存60包
 static QueueHandle_t ble_tx_queue = NULL;
 static SemaphoreHandle_t ble_tx_mutex = NULL;
 
@@ -260,7 +260,7 @@ static void AutoSendFlashDataTask(void *arg) {
                 g_flash_state.last_send_pkg = now_total;
             }
         }
-        vTaskDelay(pdMS_TO_TICKS(500));
+        vTaskDelay(pdMS_TO_TICKS(20));
     }
 
     vTaskDelete(NULL);
@@ -339,7 +339,7 @@ static void ble_tx_task(void *arg)
                 }
             }
         }
-        vTaskDelay(pdMS_TO_TICKS(2));
+        vTaskDelay(pdMS_TO_TICKS(1));
     }
 }
 
