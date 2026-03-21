@@ -1,6 +1,6 @@
 #include <stdio.h>
 #include <string.h>
-#include <inttypes.h>   // 🔥 修复：添加 PRIu32 支持
+#include <inttypes.h>  
 
 #include "esp_log.h"
 #include "host/ble_gap.h"
@@ -16,11 +16,17 @@
 #include "freertos/task.h"
 #include "esp_rom_crc.h"
 #include "sys/param.h"
+#include "freertos/queue.h" 
 
 #include "bsp.h"
 #include "typedefs.h"
 #include "flashstorage.h"
 #include "config.h"
+
+// BLE 发送队列（环形缓冲）
+#define BLE_TX_QUEUE_SIZE  60   // 可缓存60包
+static QueueHandle_t ble_tx_queue = NULL;
+static SemaphoreHandle_t ble_tx_mutex = NULL;
 
 // BLE分包配置
 #define BLE_PACKET_MAX_SIZE         22
@@ -31,16 +37,13 @@
 #define LOCAL_PACKETS_PER_GLOBAL    29
 #define GLOBAL_DATA_LEN             512
 
-static SemaphoreHandle_t ble_tx_mutex = NULL;
-
 static const char *TAG = "NimBLEModule";
 static uint16_t ConnHandle = BLE_HS_CONN_HANDLE_NONE;
 static bool BLEConnected = false;
 
+static void ble_tx_task(void *arg);
 extern QueueHandle_t CommandQueue;
 extern FlashGlobalState_t g_flash_state;
-
-// 🔥 修复：添加缺失的函数声明
 extern esp_err_t SendFlashDataOverBLE(uint32_t start_pkg_idx, uint32_t pkg_count);
 
 static int GAPEventCallback(struct ble_gap_event *Event, void *Arg);
@@ -130,43 +133,49 @@ static void OnSyncCallback(void) {
 		ESP_LOGE(TAG, "Error setting device name: %d", rc);
 		return;
 	}
+    xTaskCreate(ble_tx_task, "ble_tx_task", 4096, NULL, 6, NULL);
 	StartAdvertising();
 }
 
 esp_err_t InitBlueTooth(void) {
-	esp_err_t ret = nvs_flash_init();
-	if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-		ESP_ERROR_CHECK(nvs_flash_erase());
-		ret = nvs_flash_init();
-	}
-	ESP_ERROR_CHECK(ret);
+    esp_err_t ret = nvs_flash_init();
+    if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        ESP_ERROR_CHECK(nvs_flash_erase());
+        ret = nvs_flash_init();
+    }
+    ESP_ERROR_CHECK(ret);
 
-	ret = nimble_port_init();
-	if (ret != ESP_OK) {
-		ESP_LOGE(TAG, "Failed to initialize NimBLE: %d", ret);
-		return ret;
-	}
+    ret = nimble_port_init();
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to initialize NimBLE: %d", ret);
+        return ret;
+    }
 
-	ret = InitGATTServer();
-	if (ret != 0) {
-		ESP_LOGE(TAG, "Error initializing GATT server: %d", ret);
-		return ret;
-	}
+    ret = InitGATTServer();
+    if (ret != 0) {
+        ESP_LOGE(TAG, "Error initializing GATT server: %d", ret);
+        return ret;
+    }
 
-	ble_tx_mutex = xSemaphoreCreateMutex();
-	if (ble_tx_mutex == NULL) {
-		ESP_LOGE(TAG, "Failed to create BLE TX mutex");
-		return ESP_FAIL;
-	}
+    ble_tx_mutex = xSemaphoreCreateMutex();
+    if (ble_tx_mutex == NULL) {
+        ESP_LOGE(TAG, "Failed to create BLE TX mutex");
+        return ESP_FAIL;
+    }
 
-	ble_hs_cfg.sync_cb = OnSyncCallback;
-	return ESP_OK;
+    ble_tx_queue = xQueueCreate(BLE_TX_QUEUE_SIZE, BLE_PACKET_MAX_SIZE);
+    if (ble_tx_queue == NULL) {
+        ESP_LOGE(TAG, "Failed to create BLE TX queue");
+        return ESP_FAIL;
+    }
+
+    ble_hs_cfg.sync_cb = OnSyncCallback;
+    return ESP_OK;
 }
 
 static void AutoSendFlashDataTask(void *arg);
 
 static int GAPEventCallback(struct ble_gap_event *Event, void *Arg) {
-    // 【新增】任务句柄，用来判断任务是否存在
     static TaskHandle_t auto_send_task_handle = NULL;
 
     switch (Event->type) {
@@ -175,7 +184,7 @@ static int GAPEventCallback(struct ble_gap_event *Event, void *Arg) {
             ConnHandle = Event->connect.conn_handle;
             BLEConnected = true;
 
-            // 【修复】只创建一次任务
+            // 创建一次任务
             if (auto_send_task_handle == NULL) {
                 BaseType_t task_ret = xTaskCreate(
                     AutoSendFlashDataTask,
@@ -197,13 +206,13 @@ static int GAPEventCallback(struct ble_gap_event *Event, void *Arg) {
             BLEConnected = false;
             ESP_LOGI(TAG, "Disconnected, last sent pkg remains: %" PRIu32, g_flash_state.last_send_pkg);
 
-            // 【核心修复】断开时删除任务，防止死循环
+            //断开时删除任务，防止死循环
             if (auto_send_task_handle != NULL) {
                 vTaskDelete(auto_send_task_handle);
                 auto_send_task_handle = NULL;
             }
 
-            // 【核心修复】强制释放锁，解决 mutex timeout
+            // 强制释放锁，解决 mutex timeout
             if (ble_tx_mutex != NULL) {
                 xSemaphoreGive(ble_tx_mutex);
             }
@@ -222,9 +231,7 @@ static int GAPEventCallback(struct ble_gap_event *Event, void *Arg) {
     return 0;
 }
 
-// =============================================================================
-// 🔥 核心修复：补全函数闭合 }，解决所有嵌套错误
-// =============================================================================
+
 static void AutoSendFlashDataTask(void *arg) {
     ESP_LOGI(TAG, "=== Auto send task started ===");
     
@@ -253,7 +260,7 @@ static void AutoSendFlashDataTask(void *arg) {
                 g_flash_state.last_send_pkg = now_total;
             }
         }
-        vTaskDelay(pdMS_TO_TICKS(500));
+        vTaskDelay(pdMS_TO_TICKS(20));
     }
 
     vTaskDelete(NULL);
@@ -298,61 +305,42 @@ static int GATTDataCharAccessCallback(uint16_t ConnHandle, uint16_t attr_handle,
 
 int SendNotify(uint8_t *buf, size_t len, uint8_t global_total, uint8_t global_idx) {
     if (!BLEConnected || ConnHandle == BLE_HS_CONN_HANDLE_NONE) {
-        ESP_LOGW(TAG, "BLE not connected");
         return 0;
     }
-    if (len == 0 || buf == NULL || global_total == 0 || global_idx == 0) {
-        ESP_LOGE(TAG, "SendNotify invalid params");
-        return 1;
+
+    uint8_t frame_buf[GLOBAL_DATA_LEN] = {0};
+    memcpy(frame_buf, buf, MIN(len, GLOBAL_DATA_LEN));
+
+    for (int i = 0; i < LOCAL_PACKETS_PER_GLOBAL; i++) {
+        uint8_t pkt[BLE_PACKET_MAX_SIZE] = {0};
+        pkt[0] = global_total;
+        pkt[1] = global_idx;
+        pkt[2] = LOCAL_PACKETS_PER_GLOBAL;
+        pkt[3] = i + 1;
+        memcpy(&pkt[4], &frame_buf[i * BLE_PACKET_DATA_SIZE], BLE_PACKET_DATA_SIZE);
+
+        xQueueSend(ble_tx_queue, pkt, 0);
     }
-    if (ble_tx_mutex == NULL) {
-        ESP_LOGE(TAG, "TX mutex not init");
-        return 1;
-    }
+    return 0;
+}
 
-    if (xSemaphoreTake(ble_tx_mutex, pdMS_TO_TICKS(100)) != pdTRUE) {
-        ESP_LOGE(TAG, "Take mutex timeout");
-        return 1;
-    }
-
-    int ret = 0;
-    const uint8_t local_total = LOCAL_PACKETS_PER_GLOBAL;
-    uint8_t *full_global_buf = (uint8_t *)heap_caps_malloc(GLOBAL_DATA_LEN, MALLOC_CAP_DEFAULT);
-    if (full_global_buf == NULL) {
-        xSemaphoreGive(ble_tx_mutex);
-        return 1;
-    }
-    memset(full_global_buf, 0, GLOBAL_DATA_LEN);
-    memcpy(full_global_buf, buf, MIN(len, GLOBAL_DATA_LEN));
-
-    for (uint8_t local_idx = 0; local_idx < local_total; local_idx++) {
-        uint8_t pkt_buf[BLE_PACKET_MAX_SIZE] = {0};
-        pkt_buf[0] = global_total;
-        pkt_buf[1] = global_idx;
-        pkt_buf[2] = local_total;
-        pkt_buf[3] = local_idx + 1;
-
-        size_t data_offset = local_idx * BLE_PACKET_DATA_SIZE;
-        size_t data_len = MIN(BLE_PACKET_DATA_SIZE, GLOBAL_DATA_LEN - data_offset);
-        memcpy(&pkt_buf[4], &full_global_buf[data_offset], data_len);
-
-        struct os_mbuf *om = ble_hs_mbuf_from_flat(pkt_buf, BLE_PACKET_MAX_SIZE);
-        if (om == NULL) {
-            ret = 1;
-            break;
+static void ble_tx_task(void *arg)
+{
+    uint8_t pkt[BLE_PACKET_MAX_SIZE];
+    while (1)
+    {
+        if (xQueueReceive(ble_tx_queue, pkt, portMAX_DELAY))
+        {
+            if (BLEConnected && ConnHandle != BLE_HS_CONN_HANDLE_NONE)
+            {
+                struct os_mbuf *om = ble_hs_mbuf_from_flat(pkt, BLE_PACKET_MAX_SIZE);
+                if (om) {
+                    ble_gatts_notify_custom(ConnHandle, DataCharValHandle, om);
+                }
+            }
         }
-        int rc = ble_gatts_notify_custom(ConnHandle, DataCharValHandle, om);
-        if (rc != 0) {
-            os_mbuf_free_chain(om);
-            ret = rc;
-            break;
-        }
-        vTaskDelay(pdMS_TO_TICKS(50));
+        vTaskDelay(pdMS_TO_TICKS(1));
     }
-
-    free(full_global_buf);
-    xSemaphoreGive(ble_tx_mutex);
-    return ret;
 }
 
 void RunBlueToothHost(void) {
