@@ -12,8 +12,8 @@
 /* ================= 引脚定义 ================= */
 #define PIN_CS           35
 #define PIN_CLK          48
-#define PIN_MOSI         42     //测试电路内是42，板子上是33
-#define PIN_MISO         47
+#define PIN_MOSI         47     //测试电路内是42，板子上是33
+#define PIN_MISO         33     //原理图画反了这里再纠正回来
 #define PIN_WP           36
 #define PIN_HOLD         38
 
