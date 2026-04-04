@@ -24,7 +24,7 @@
 #include "config.h"
 
 // BLE 发送队列（环形缓冲）
-#define BLE_TX_QUEUE_SIZE  64   
+#define BLE_TX_QUEUE_SIZE  256   
 static QueueHandle_t ble_tx_queue = NULL;
 static SemaphoreHandle_t ble_tx_mutex = NULL;
 
@@ -170,6 +170,7 @@ esp_err_t InitBlueTooth(void) {
     }
 
     ble_hs_cfg.sync_cb = OnSyncCallback;
+    esp_log_level_set("NimBLE", ESP_LOG_WARN); 
     return ESP_OK;
 }
 
@@ -260,7 +261,7 @@ static void AutoSendFlashDataTask(void *arg) {
                 g_flash_state.last_send_pkg = now_total;
             }
         }
-        vTaskDelay(pdMS_TO_TICKS(20));
+        vTaskDelay(pdMS_TO_TICKS(5));
     }
 
     vTaskDelete(NULL);

@@ -13,7 +13,7 @@
 #define DATA_STORE_TASK_PRIORITY      4
 #define DATA_TEL_TASK_PRIORITY        2
 #define COMMAND_HANDLER_TASK_PRIORITY 4
-#define BLUETOOTH_TX_TASK_PRIORITY    5
+#define BLUETOOTH_TX_TASK_PRIORITY    7
 #define DATA_PERIPHERAL_TASK_PRIORITY 5
 
 // ================= 任务堆栈大小定义 =================
