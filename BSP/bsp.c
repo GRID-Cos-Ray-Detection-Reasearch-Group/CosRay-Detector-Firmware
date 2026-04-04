@@ -66,7 +66,7 @@ esp_err_t SendFlashDataOverBLE(uint32_t start_pkg_idx, uint32_t pkg_count)
         }
 
         // 全局包间隔延迟，避免BLE拥塞
-        vTaskDelay(pdMS_TO_TICKS(1000));
+        vTaskDelay(pdMS_TO_TICKS(10));
     }
 
     ESP_LOGI(TAG, "Sent %u/%u packages from flash (start=%u)", sent_pkgs, pkg_count, start_pkg_idx);
