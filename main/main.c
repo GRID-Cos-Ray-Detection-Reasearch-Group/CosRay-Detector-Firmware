@@ -8,184 +8,259 @@
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "sdkconfig.h"
+#include "typedefs.h"
 #include <inttypes.h>
 #include <stdio.h>
+#include <string.h>
 
-// TAG 变量指向存储在 flash 中的一个字符串字面量
-// 见esp_log使用教程：https://docs.espressif.com/projects/esp-idf/zh_CN/stable/esp32/api-reference/system/log.html
-static const char *TAG = "MyModule";
+#include "flashstorage.h"
+#include "bsp.h"
+#include "gps_module.h"
+#include "Preamplifier.h"
+#include "driver/gpio.h"
+#include "driver/i2c.h"
+#include "esp_timer.h"
 
-// 任务句柄声明
+static const char *TAG = "MainModule";
+
+// 全局变量定义
 TaskHandle_t dataProcessTaskHandle;
 TaskHandle_t bluetoothTaskHandle;
+TaskHandle_t bluetoothTxTaskHandle;
+TaskHandle_t commandHandlerTaskHandle;
 TaskHandle_t dataStoreTaskHandle;
 TaskHandle_t telTaskHandle;
+TaskHandle_t dataPeripheralTaskHandle;
 
 uint8_t gpsBuffer[256];
+size_t gpsBufferLen = 0;
 
-/*!
- * \brief
- *
- */
-static void GpsRxIntTask(void);
+QueueHandle_t CommandQueue;
+QueueHandle_t DataQueue;
+QueueHandle_t TxQueue;
+QueueHandle_t FlashQueue;
 
-static void GpsRxIntSetup(void);
+// 外部函数声明
+extern esp_err_t InitDataPeripheral(void);
+extern void RunDataPeripheral(void *pvParameters);
+extern esp_err_t SendFlashDataOverBLE(uint32_t start_pkg_idx, uint32_t pkg_count);
+extern FlashGlobalState_t g_flash_state;
 
-/*!
- * \brief
- *
- */
-static void PPSIntTask(void);
-
-static void PPSIntSetup(void);
-
-/*!
- * \brief
- *
- */
-static void MuonIntTask(void);
-
-static void MuonInttSetup(void);
-
-/*!
- * \brief
- *
- */
-static void AppDataProcess(void *pvParameters);
-
-/*!
- * \brief
- *
- */
-static void AppBlueTooth(void *pvParameters);
-
-/*!
- * \brief
- *
- */
-static void AppDataStore(void *pvParameters);
-
-/*!
- * \brief
- *
- */
-static void AppDataTEL(void *pvParameters);
-
-/*!
- * \brief
- *
- */
-void InterruptSetup(void);
-
-/*!
- * \brief
- *
- */
-void AppSetup(void);
-
-void app_main(void) {
-	ESP_LOGI(TAG, "FreeRTOS Application Starting...");
-	AppSetup();
-	InterruptSetup();
-	ESP_LOGI(TAG, "All tasks created, scheduler will start");
-	// 注意：esp-idf 的 freertos不需要用户启动系统任务调度
-	// vTaskStartScheduler();  //Enables task scheduling
-	while (1) {
-		ESP_LOGI(TAG, "error");
-	}
+// ================= Preamplifier trigger callback =================
+static void OnPreamplifierTrigger(const preamplifier_trigger_sample_t *sample, void *ctx) {
+    (void)ctx;
+    Command_t cmd;
+    memset(&cmd, 0, sizeof(cmd));
+    cmd.data[0] = OPCODE_TRIGGER;
+    uint16_t raw = (uint16_t)(sample->signal_raw < 0 ? 0 : (sample->signal_raw > 4095 ? 4095 : sample->signal_raw));
+    cmd.data[1] = (raw >> 8) & 0xFF;
+    cmd.data[2] = raw & 0xFF;
+    xQueueSend(DataQueue, &cmd, pdMS_TO_TICKS(10));
 }
 
-static void GpsRxIntTask(void) {}
+// ================= ISR handlers =================
+static void IRAM_ATTR pps_isr(void *arg) {
+    BaseType_t hp = pdFALSE;
+    Command_t cmd;
+    memset(&cmd, 0, sizeof(cmd));
+    cmd.data[0] = OPCODE_PPS;
+    xQueueSendFromISR(DataQueue, &cmd, &hp);
+    if (hp) portYIELD_FROM_ISR();
+}
 
-static void GpsRxIntSetup(void) {}
+static void IRAM_ATTR tmp_alert_isr(void *arg) {
+    BaseType_t hp = pdFALSE;
+    Command_t cmd;
+    memset(&cmd, 0, sizeof(cmd));
+    cmd.data[0] = OPCODE_TMP_ALERT;
+    xQueueSendFromISR(DataQueue, &cmd, &hp);
+    if (hp) portYIELD_FROM_ISR();
+}
 
-/*!
- * \brief
- *
- */
-static void PPSIntTask(void) {}
+// ================= Interrupt setup functions =================
+void PPSIntSetup(void) {
+    gpio_config_t io = {
+        .pin_bit_mask = 1ULL << PIN_PPS,
+        .mode = GPIO_MODE_INPUT,
+        .pull_up_en = GPIO_PULLUP_ENABLE,
+        .intr_type = GPIO_INTR_POSEDGE,
+    };
+    gpio_config(&io);
+    gpio_isr_handler_add(PIN_PPS, pps_isr, NULL);
+    ESP_LOGI(TAG, "PPS ISR installed successfully");
+}
 
-static void PPSIntSetup(void) {}
+void TMPAlertIntSetup(void) {
+    gpio_config_t io = {
+        .pin_bit_mask = 1ULL << PIN_TMP_ALERT,
+        .mode = GPIO_MODE_INPUT,
+        .pull_up_en = GPIO_PULLUP_ENABLE,
+        .intr_type = GPIO_INTR_ANYEDGE,
+    };
+    gpio_config(&io);
+    gpio_isr_handler_add(PIN_TMP_ALERT, tmp_alert_isr, NULL);
+    ESP_LOGI(TAG, "TMP ALERT ISR installed successfully");
+}
 
-/*!
- * \brief
- *
- */
-static void MuonIntTask(void) {}
+// ================= 命令处理任务 =================
+static void CommandHandlerTask(void *pvParameters) {
+    ESP_LOGI(TAG, "CommandHandlerTask started");
 
-static void MuonInttSetup(void) {}
+    while (1) {
+        Command_t cmdMsg;
+        if (xQueueReceive(CommandQueue, &cmdMsg, portMAX_DELAY) == pdTRUE) {
+            uint8_t opcode = cmdMsg.data[0];
+            ESP_LOGI(TAG, "Command received: 0x%02X", opcode);
 
-/*!
- * \brief
- *
- */
-static void AppDataProcess(void *pvParameters) {}
+            if (opcode == STATUS) {
+                ESP_LOGI(TAG, "STATUS command received, sending flash data over BLE");
+                uint32_t total_pkgs = g_flash_state.write_page * (W25N_PAGE_SIZE_MAIN / DATA_PACKAGE_SIZE);
+                uint32_t unsent_pkgs = total_pkgs - g_flash_state.last_send_pkg;
 
-/*!
- * \brief
- *
- */
-static void AppBlueTooth(void *pvParameters) {}
+                if (unsent_pkgs > 0) {
+                    esp_err_t ret = SendFlashDataOverBLE(g_flash_state.last_send_pkg, unsent_pkgs);
+                    if (ret != ESP_OK) {
+                        ESP_LOGE(TAG, "Send flash data over BLE failed: %d", ret);
+                    } else {
+                        ESP_LOGI(TAG, "Sent %" PRIu32 " unsent flash packages over BLE", unsent_pkgs);
+                    }
+                } else {
+                    ESP_LOGI(TAG, "No unsent flash data to send (all packages sent)");
+                }
+                continue;
+            }
 
-/*!
- * \brief
- *
- */
-static void AppDataStore(void *pvParameters) {}
+            if (opcode == START || opcode == STOP || opcode == ACK || opcode == NACK) {
+                if (xQueueSend(DataQueue, &cmdMsg, pdMS_TO_TICKS(50)) != pdTRUE)
+                    ESP_LOGE(TAG, "Failed to forward command to DataQueue");
+                else
+                    ESP_LOGI(TAG, "Command forwarded successfully");
+            } else if (opcode == OPCODE_TRIGGER || opcode == OPCODE_PPS ||
+                       opcode == OPCODE_TMP_ALERT || opcode == OPCODE_GPS) {
+                if (xQueueSend(DataQueue, &cmdMsg, pdMS_TO_TICKS(20)) != pdTRUE)
+                    ESP_LOGE(TAG, "Failed to forward special opcode");
+            } else {
+                ESP_LOGW(TAG, "Unknown opcode: 0x%02X", opcode);
+            }
+        }
+    }
+}
 
-/*!
- * \brief
- *
- */
-static void AppDataTEL(void *pvParameters) {}
+// ================= BLE发送任务 =================
+static void BlueToothTxTask(void *pvParameters) {
+    ESP_LOGI(TAG, "BlueToothTxTask started");
 
+    while (1) {
+        TxPkg_t TxPkg;
+        if (xQueueReceive(TxQueue, &TxPkg, portMAX_DELAY)) {
+            ESP_LOGI(TAG, "Sending BLE data (%zu bytes)", TxPkg.length);
+            int rc = SendNotify(TxPkg.data, TxPkg.length, 0, 0);
+            if (rc != 0)
+                ESP_LOGE(TAG, "BLE notify failed (%d)", rc);
+            else
+                ESP_LOGI(TAG, "BLE data sent successfully (%zu bytes)", TxPkg.length);
+        }
+    }
+}
+
+static void AppBlueTooth(void *pvParameters) {
+    ESP_LOGI(TAG, "BlueToothTask started");
+    RunBlueToothHost();
+    ESP_LOGI(TAG, "BlueToothTask ended");
+    vTaskDelete(NULL);
+}
+
+// ================= 中断总配置 =================
 void InterruptSetup(void) {
-	ESP_LOGI(TAG, "Setting up interrupts...");
+    ESP_LOGI(TAG, "Setting up interrupts...");
 
-	GpsRxIntSetup();
-	ESP_LOGI(TAG, "GPS interrupt setup completed");
+    gpio_install_isr_service(0);
 
-	PPSIntSetup();
-	ESP_LOGI(TAG, "PPS interrupt setup completed");
+    // GPS module handles UART init and parsing tasks
+    gps_start();
+    ESP_LOGI(TAG, "GPS started");
 
-	MuonInttSetup();
-	ESP_LOGI(TAG, "Muon interrupt setup completed");
+    PPSIntSetup();
+    ESP_LOGI(TAG, "PPS interrupt setup completed");
 
-	ESP_LOGI(TAG, "All interrupts setup completed");
+    TMPAlertIntSetup();
+    ESP_LOGI(TAG, "TMP Alert interrupt setup completed");
+
+    ESP_LOGI(TAG, "All interrupts setup completed");
 }
 
+// ================= 系统初始化 =================
 void AppSetup(void) {
-	// 创建GPS接收任务
-	BaseType_t ret = xTaskCreate(
-		AppDataProcess, "DataProcess_Task", DATA_PROCESS_TASK_STACK_SIZE, NULL,
-		DATA_PROCESS_TASK_PRIORITY, &dataProcessTaskHandle);
-	if (ret != pdPASS) {
-		ESP_LOGE(TAG, "Failed to create Task1");
-		return;
-	}
-	ESP_LOGI(TAG, "Task1 created successfully");
-	// 创建蓝牙任务
-	ret = xTaskCreate(AppBlueTooth, "Bluetooth_Task", BLUETOOTH_TASK_STACK_SIZE,
-					  NULL, BLUETOOTH_TASK_PRIORITY, &bluetoothTaskHandle);
-	if (ret != pdPASS) {
-		ESP_LOGE(TAG, "Failed to create Task1");
-		return;
-	}
-	ESP_LOGI(TAG, "Task1 created successfully");
-	// 创建数据存储任务
-	ret =
-		xTaskCreate(AppDataStore, "DataStore_Task", DATA_STORE_TASK_STACK_SIZE,
-					NULL, DATA_STORE_TASK_PRIORITY, &dataStoreTaskHandle);
-	if (ret != pdPASS) {
-		ESP_LOGE(TAG, "Failed to create Task1");
-		return;
-	}
-	ESP_LOGI(TAG, "Task1 created successfully");
-	ret = xTaskCreate(AppDataTEL, "DataTEL_Task", DATA_TEL_TASK_STACK_SIZE,
-					  NULL, DATA_TEL_TASK_PRIORITY, &telTaskHandle);
-	if (ret != pdPASS) {
-		ESP_LOGE(TAG, "Failed to create Task1");
-		return;
-	}
-	ESP_LOGI(TAG, "Task1 created successfully");
+    CommandQueue = xQueueCreate(COMMAND_QUEUE_SIZE, sizeof(Command_t));
+    if (!CommandQueue) {
+        ESP_LOGE(TAG, "Failed to create CommandQueue");
+        return;
+    }
+
+    DataQueue = xQueueCreate(DATA_QUEUE_SIZE, sizeof(Command_t));
+    if (!DataQueue) {
+        ESP_LOGE(TAG, "Failed to create DataQueue");
+        return;
+    }
+
+    TxQueue = xQueueCreate(TX_QUEUE_SIZE, sizeof(TxPkg_t));
+    if (!TxQueue) {
+        ESP_LOGE(TAG, "Failed to create TxQueue");
+        return;
+    }
+
+    FlashQueue = xQueueCreate(FLASH_QUEUE_SIZE, sizeof(TxPkg_t));
+    if (!FlashQueue) {
+        ESP_LOGE(TAG, "Failed to create FlashQueue");
+        return;
+    }
+
+    if (BSPInit() != ESP_OK) {
+        ESP_LOGE(TAG, "BSPInit failed");
+        return;
+    }
+
+    // Initialize Preamplifier with trigger callback
+    preamplifier_config_t preamp_cfg;
+    preamplifier_get_default_config(&preamp_cfg);
+    preamp_cfg.on_trigger_sample = OnPreamplifierTrigger;
+    if (preamplifier_init(&preamp_cfg) != ESP_OK) {
+        ESP_LOGE(TAG, "Preamplifier init failed");
+    }
+
+    xTaskCreate(AppBlueTooth, "BlueToothTask", BLUETOOTH_TASK_STACK_SIZE, NULL,
+                BLUETOOTH_TASK_PRIORITY, &bluetoothTaskHandle);
+    ESP_LOGI(TAG, "BlueToothTask created successfully");
+
+    xTaskCreate(CommandHandlerTask, "CommandHandlerTask",
+                COMMAND_HANDLER_TASK_STACK_SIZE, NULL,
+                COMMAND_HANDLER_TASK_PRIORITY, &commandHandlerTaskHandle);
+    ESP_LOGI(TAG, "CommandHandlerTask created successfully");
+
+    xTaskCreate(BlueToothTxTask, "BlueToothTxTask",
+                BLUETOOTH_TX_TASK_STACK_SIZE, NULL, BLUETOOTH_TX_TASK_PRIORITY,
+                &bluetoothTxTaskHandle);
+    ESP_LOGI(TAG, "BlueToothTxTask created successfully");
+
+    xTaskCreate(RunDataPeripheral, "DataPeripheralTask",
+                DATA_PERIPHERAL_TASK_STACK_SIZE, NULL, DATA_PERIPHERAL_TASK_PRIORITY,
+                &dataPeripheralTaskHandle);
+
+    xTaskCreate(AppDataStoreTask, "DataStoreTask", DATA_STORE_TASK_STACK_SIZE, NULL,
+                DATA_STORE_TASK_PRIORITY, &dataStoreTaskHandle);
+    ESP_LOGI(TAG, "DataStoreTask created successfully");
+}
+
+// ================= 主函数 =================
+void app_main(void) {
+    ESP_LOGI(TAG, "FreeRTOS Application Starting...");
+    AppSetup();
+    InterruptSetup();
+    ESP_LOGI(TAG, "All tasks created, system running");
+
+    while (1) {
+        ESP_LOGI(TAG, "Main running... Flash write page: %" PRIu32 ", last sent pkg: %" PRIu32,
+                 g_flash_state.write_page, g_flash_state.last_send_pkg);
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
 }
