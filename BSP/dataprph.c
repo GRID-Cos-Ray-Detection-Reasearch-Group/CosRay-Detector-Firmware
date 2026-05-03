@@ -115,8 +115,8 @@ static void timeline_send_now(void) {
         // UTC: encode year/month/day/hour/min/sec as packed BCD-like uint32_t
         // year is 2 bytes LE
         uint16_t year = (uint16_t)(gd.year[0] | ((uint16_t)gd.year[1] << 8));
-        // Pack as: [year-2000 (8b)] [month (4b)] [day (5b)] [hour (5b)] [min (6b)] [sec (4b)]
-        // Simple packing: yymmddHHMM (shifted)
+        // Pack UTC as uint32_t: bits [31:24]=year-low8, [23:20]=month,
+        // [19:15]=day, [14:10]=hour, [9:4]=minute, [3:0]=second-low4
         uint32_t utc = ((uint32_t)(year & 0xFF) << 24) |
                        ((uint32_t)gd.month << 20) |
                        ((uint32_t)gd.day << 15) |

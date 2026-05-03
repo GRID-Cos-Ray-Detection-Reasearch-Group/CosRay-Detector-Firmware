@@ -59,12 +59,6 @@
 #define PIN_GPS_RX        17
 #define PIN_GPS_TX        18
 
-// ================= 类型别名（解决格式化问题） =================
-// 使用 PRIu32 宏标准化 uint32_t 格式化（需包含 inttypes.h）
-#ifndef PRIu32
-#define PRIu32 "lu"  // long unsigned int（适配ESP32-S3的uint32_t）
-#endif
-
 // ================= 任务句柄声明 =================
 extern TaskHandle_t dataProcessTaskHandle;
 extern TaskHandle_t bluetoothTaskHandle;
